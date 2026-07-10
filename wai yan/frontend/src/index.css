@@ -1,0 +1,484 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+/* ── LeaveFlow dual themes (tokens only; class .dark on <html> flips all) ─── */
+
+/* LIGHT — Indigo & Slate (neutral surfaces + indigo accent + semantic status) */
+:root {
+  --bg: #F7F8FA;
+  --bg-mid: #F1F3F7;
+  --bg-deep: #E9ECF2;
+
+  --surface: #FFFFFF;
+  --surface-2: #F1F3F7;
+  --surface-3: #E9ECF2;
+  --surface-gradient: linear-gradient(155deg, #FFFFFF 0%, #F1F3F7 55%, #F7F8FA 100%);
+  --glass: rgba(255, 255, 255, 0.88);
+  --glass-strong: rgba(255, 255, 255, 0.96);
+
+  --accent: #5B5BD6;
+  --accent-hover: #4B4BC4;
+  --accent-secondary: #5B5BD6;
+  --accent-muted: rgba(91, 91, 214, 0.12);
+  --accent-glow: rgba(91, 91, 214, 0.20);
+  --accent-gradient: linear-gradient(135deg, #5B5BD6 0%, #4B4BC4 100%);
+  --brand-light: rgba(91, 91, 214, 0.12); /* decorative tint only */
+
+  --secondary: #6B7280; /* decorative only — never status */
+
+  --success: #16A34A; /* approved */
+  --success-muted: rgba(22, 163, 74, 0.12);
+  --warning: #D97706; /* pending */
+  --warning-muted: rgba(217, 119, 6, 0.12);
+  --danger: #DC2626; /* rejected */
+  --danger-muted: rgba(220, 38, 38, 0.10);
+  --info: #5B5BD6;
+  --info-muted: rgba(91, 91, 214, 0.12);
+  --purple: #5B5BD6;
+  --purple-muted: rgba(91, 91, 214, 0.12);
+  --pink: #6B7280;
+  --pink-muted: rgba(107, 114, 128, 0.12);
+
+  --text: #1A1D26;
+  --text-muted: #6B7280;
+  --text-dim: #9AA1AD;
+  --on-accent: #FFFFFF; /* text on filled accent/status buttons */
+
+  --border: #E7E9EF;
+  --border-light: #EFF1F5;
+  --border-strong: #D1D5DE;
+
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+
+  --shadow-sm: 0 1px 3px rgba(26, 29, 38, 0.06);
+  --shadow: 0 4px 20px rgba(26, 29, 38, 0.08);
+  --shadow-lg: 0 12px 40px rgba(26, 29, 38, 0.10);
+  --shadow-accent: 0 4px 20px rgba(91, 91, 214, 0.18);
+  --shadow-hover: 0 8px 28px rgba(26, 29, 38, 0.10);
+
+  --overlay: rgba(26, 29, 38, 0.42);
+  --bg-glow-1: rgba(91, 91, 214, 0.08);
+  --bg-glow-2: rgba(91, 91, 214, 0.04);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 15px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 24px;
+  --font-size-2xl: 36px;
+  --font-size-stat: 40px;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.2;
+  --line-height-body: 1.55;
+  --letter-tight: -0.02em;
+
+  --sidebar-width: 240px;
+  --navbar-height: 64px;
+
+  --transition-fast: 150ms ease;
+  --transition: 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* DARK — Indigo & Slate (near-black slate + brighter indigo + semantic status) */
+.dark {
+  --bg: #0E0F14;
+  --bg-mid: #14151C;
+  --bg-deep: #0A0B0F;
+
+  --surface: #1A1C23;
+  --surface-2: #22252E;
+  --surface-3: #2A2E39;
+  --surface-gradient: linear-gradient(155deg, #22252E 0%, #1A1C23 55%, #14151C 100%);
+  --glass: rgba(26, 28, 35, 0.82);
+  --glass-strong: rgba(26, 28, 35, 0.94);
+
+  --accent: #7C7CF0;
+  --accent-hover: #6A6AE6;
+  --accent-secondary: #7C7CF0;
+  --accent-2: #7C7CF0;
+  --accent-muted: rgba(124, 124, 240, 0.16);
+  --accent-glow: rgba(124, 124, 240, 0.28);
+  --accent-gradient: linear-gradient(135deg, #7C7CF0 0%, #6A6AE6 100%);
+  --brand-light: rgba(124, 124, 240, 0.20);
+
+  --secondary: #9AA0AC; /* decorative only — never status */
+
+  --success: #34D399; /* approved */
+  --success-muted: rgba(52, 211, 153, 0.15);
+  --warning: #FBBF24; /* pending */
+  --warning-muted: rgba(251, 191, 36, 0.15);
+  --danger: #F87171; /* rejected */
+  --danger-muted: rgba(248, 113, 113, 0.15);
+  --info: #7C7CF0;
+  --info-muted: rgba(124, 124, 240, 0.14);
+  --purple: #7C7CF0;
+  --purple-muted: rgba(124, 124, 240, 0.14);
+  --pink: #9AA0AC;
+  --pink-muted: rgba(154, 160, 172, 0.14);
+
+  --text: #ECEDF1;
+  --text-muted: #9AA0AC;
+  --text-dim: #6E7480;
+  --on-accent: #FFFFFF;
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.05);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --shadow-accent: 0 4px 24px rgba(124, 124, 240, 0.28);
+  --shadow-hover: 0 12px 36px rgba(0, 0, 0, 0.48);
+
+  --overlay: rgba(0, 0, 0, 0.72);
+  --bg-glow-1: rgba(124, 124, 240, 0.10);
+  --bg-glow-2: rgba(124, 124, 240, 0.06);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+
+body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, var(--bg-glow-1), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 90% 0%, var(--bg-glow-2), transparent 50%);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+input, select, textarea, button { font-family: inherit; font-size: inherit; }
+
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+/* ── Micro-interactions (CSS only) ───────────────────────────────────────── */
+@keyframes ai-spin {
+  to { transform: rotate(360deg); }
+}
+.ai-spin {
+  animation: ai-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes ai-reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 480px;
+  }
+}
+.ai-reveal-in {
+  animation: ai-reveal-in 0.28s ease forwards;
+  overflow: hidden;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-in {
+  animation: fade-in-up var(--transition-slow) ease both;
+}
+.stagger-1 { animation-delay: 40ms; }
+.stagger-2 { animation-delay: 80ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 160ms; }
+.stagger-5 { animation-delay: 200ms; }
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--surface-3) 45%,
+    var(--surface-2) 90%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+.gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Grok dark-mode + responsive (re-appended so <html class="dark"> still works) ── */
+/*
+ * ENH-7e: class-based dark mode (toggle on <html class="dark">)
+ * ENH-6: Responsive breakpoints
+ *   sm  640   phones landscape / large phones
+ *   md  768   tablets
+ *   lg  1024  small laptops / iPad landscape
+ *   xl  1280  laptops / 24" @ typical scale
+ *   2xl 1536  large laptops / 27"
+ *   3xl 1920  full HD / many 27–32" desktops
+ *   4xl 2560  QHD / ultra-wide / 32–40"
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --breakpoint-3xl: 120rem; /* 1920px */
+  --breakpoint-4xl: 160rem; /* 2560px */
+
+  --font-sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Approval design system — bound to CSS vars so themes flip together */
+  --color-aq-bg: var(--bg);
+  --color-aq-surface: var(--surface);
+  --color-aq-surface-2: var(--surface-2);
+  --color-aq-border: var(--border);
+  --color-aq-border-subtle: var(--border-light);
+  --color-aq-primary: var(--accent);
+  --color-aq-primary-hover: var(--accent-hover);
+  --color-aq-success: var(--success);
+  --color-aq-success-hover: var(--success);
+  --color-aq-danger: var(--danger);
+  --color-aq-danger-hover: var(--danger);
+  --color-aq-text: var(--text);
+  --color-aq-text-muted: var(--text-muted);
+  --color-aq-text-subtle: var(--text-dim);
+}
+
+/* Base document — works on phone → 40" desktop */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark input:not([type='checkbox']):not([type='radio']),
+html.dark select,
+html.dark textarea {
+  color-scheme: dark;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Touch-friendly defaults */
+button,
+a,
+[role="button"],
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+/* Prevent iOS zoom-on-focus for form controls under 16px */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Safe areas (iPhone notch / home indicator / landscape) */
+.safe-px {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+.safe-pb {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+.safe-pt {
+  padding-top: max(0px, env(safe-area-inset-top));
+}
+
+/* App page shell widths — ENH-6: max content width, don't stretch 40" monitors */
+.page-shell {
+  width: 100%;
+  margin-inline: auto;
+  max-width: 80rem; /* max-w-7xl ≈ 1280 — laptop / 24" */
+}
+
+@media (min-width: 1536px) {
+  .page-shell {
+    max-width: 90rem; /* ~1440 — 27" */
+  }
+}
+
+@media (min-width: 1920px) {
+  .page-shell {
+    max-width: 100rem; /* ~1600 — 32" */
+  }
+}
+
+@media (min-width: 2560px) {
+  .page-shell {
+    max-width: 120rem; /* ~1920 content on 40"/ultra-wide */
+  }
+}
+
+/* Fluid page titles — dashboard title up to ~36px */
+.page-title {
+  font-size: clamp(1.375rem, 1.1rem + 1.1vw, var(--font-size-2xl));
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-tight);
+  color: var(--text);
+}
+
+.page-subtitle {
+  font-size: clamp(0.8125rem, 0.78rem + 0.2vw, var(--font-size-base));
+  color: var(--text-muted);
+}
+
+.section-title {
+  font-size: clamp(1.125rem, 1rem + 0.4vw, var(--font-size-xl));
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-tight);
+  color: var(--text);
+  line-height: var(--line-height-tight);
+}
+
+/* Scrollable tables on small screens */
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.table-scroll table {
+  min-width: 36rem;
+}
+
+/* Card grid that densifies on big monitors — ENH-6 */
+.responsive-card-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .responsive-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1536px) {
+  .responsive-card-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1920px) {
+  .responsive-card-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+/* Min touch target helper — ENH-6: 44px */
+.touch-target {
+  min-height: 2.75rem; /* 44px */
+  min-width: 2.75rem;
+}
+
+/* Hide scrollbar but keep scroll (mobile horizontal chips) */
+.scroll-x-hide {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.scroll-x-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Print: clean leave reports */
+@media print {
+  aside,
+  nav,
+  header button,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  body {
+    background: var(--surface);
+    color: var(--text);
+  }
+}
