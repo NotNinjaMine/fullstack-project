@@ -5,8 +5,10 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
 });
 
-// No backend yet — mock the API so the Employee Experience is testable end to end.
-// Set VITE_USE_MOCK_API=false once Members 3/4's Express server is available.
+// Mock the API by default so the client runs standalone. Member 1's real
+// backend (../server) implements the M1 endpoints; set VITE_USE_MOCK_API=false
+// to use it. Other verticals' endpoints (/leave, /holiday, /ai) still need the
+// mock until their backends are assembled — see .env.example.
 if (import.meta.env.VITE_USE_MOCK_API !== "false") {
   installMockApi(api);
 }
@@ -23,17 +25,17 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Auto-logout on 401 (expired/invalid token) — but not for the pre-session
-// auth flow (login + OTP verify/resend), since bad credentials or a wrong
-// code also respond 401 and should surface as an inline form error instead.
-const AUTH_FLOW_PATHS = ["/user/login", "/user/verify-otp", "/user/resend-otp"];
-
+// Auto-logout on 401 (expired/invalid token) — but not for the login request
+// itself, since bad credentials also respond 401 and should surface as an
+// inline form error instead.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const isAuthFlowRequest = AUTH_FLOW_PATHS.some((p) => error.config?.url?.includes(p));
-    if (error.response && error.response.status === 401 && !isAuthFlowRequest) {
-      localStorage.clear();
+    const isLoginRequest = error.config?.url?.includes("/user/login");
+    if (error.response && error.response.status === 401 && !isLoginRequest) {
+      // Only drop the session token — see AuthContext's logout for why
+      // localStorage.clear() would be wrong here too.
+      localStorage.removeItem("accessToken");
       window.location = "/login";
     }
     return Promise.reject(error);

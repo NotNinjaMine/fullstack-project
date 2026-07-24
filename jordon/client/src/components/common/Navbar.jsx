@@ -1,17 +1,20 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import useAuth from "../../hooks/useAuth";
+import LocaleSwitcher from "./LocaleSwitcher";
+import { linksFor, ROLE_LABEL } from "../../lib/nav";
 
-const LINKS = [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/apply", label: "Apply" },
-  { to: "/history", label: "History" },
-  { to: "/calendar", label: "Calendar" },
-];
+const ROLE_TITLE = {
+  EMPLOYEE: "Employee Dashboard",
+  SUPERVISOR: "Supervisor Approvals",
+  MANAGER: "Manager Approvals",
+  HR_ADMIN: "HR Administration",
+};
 
 export default function Navbar() {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const links = linksFor(user.role);
 
   return (
     <header className="bg-teal-900 text-white">
@@ -28,12 +31,13 @@ export default function Navbar() {
             <p className="text-xs uppercase tracking-widest text-teal-300">
               Innovare Management · Leave Management System
             </p>
-            <h1 className="text-xl font-semibold">Employee Dashboard</h1>
+            <h1 className="text-xl font-semibold">{ROLE_TITLE[user.role] ?? "Dashboard"}</h1>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Notification badge placeholder — wired to Member 2's NotificationContext */}
+          <LocaleSwitcher compact />
+          {/* Notification badge placeholder — wired to the Notifications vertical (UC-12) */}
           <button
             className="w-9 h-9 rounded-full bg-teal-800 hover:bg-teal-700 flex items-center justify-center"
             aria-label="Notifications"
@@ -44,12 +48,16 @@ export default function Navbar() {
           <div className="text-right hidden sm:block">
             <p className="font-medium leading-tight">{user.name}</p>
             <p className="text-xs text-teal-200">
-              {user.role.charAt(0) + user.role.slice(1).toLowerCase()} · {user.team}
+              {ROLE_LABEL[user.role] ?? user.role} · {user.team}
             </p>
           </div>
-          <div className="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center font-semibold">
+          <NavLink
+            to="/profile"
+            className="w-10 h-10 rounded-full bg-teal-600 hover:bg-teal-500 flex items-center justify-center font-semibold"
+            title="My account"
+          >
             {user.initials}
-          </div>
+          </NavLink>
           <button onClick={logout} className="text-sm bg-teal-800 hover:bg-teal-700 rounded-lg px-3 py-2">
             Log out
           </button>
@@ -58,7 +66,7 @@ export default function Navbar() {
 
       {menuOpen && (
         <nav className="md:hidden bg-teal-800 px-4 py-2 flex flex-col gap-1">
-          {LINKS.map((l) => (
+          {links.map((l) => (
             <NavLink
               key={l.to}
               to={l.to}
@@ -67,7 +75,7 @@ export default function Navbar() {
                 `rounded-lg px-3 py-2 text-sm ${isActive ? "bg-teal-700 text-white" : "text-teal-200"}`
               }
             >
-              {l.label}
+              {l.icon} {l.label}
             </NavLink>
           ))}
         </nav>

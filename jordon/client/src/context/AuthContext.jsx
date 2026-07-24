@@ -25,12 +25,22 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.clear();
+    // Only drop the session token — localStorage.clear() would also wipe the
+    // mock API's persisted fixtures (invitations, sessions, announcements,
+    // users, requests), breaking any multi-user demo flow across a logout.
+    localStorage.removeItem("accessToken");
     setUser(null);
   }, []);
 
+  // Merges a partial user update (e.g. after PUT /user/profile) into the
+  // session without a round-trip refetch — used by the Profile page (UC-23)
+  // and the Navbar's locale switcher.
+  const updateUser = useCallback((patch) => {
+    setUser((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, loginUser, logout }}>
+    <AuthContext.Provider value={{ user, loading, loginUser, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

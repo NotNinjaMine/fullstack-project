@@ -5,16 +5,28 @@ import useAuth from "./hooks/useAuth";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 import Navbar from "./components/common/Navbar";
 import Sidebar from "./components/common/Sidebar";
+import AnnouncementBanner from "./components/common/AnnouncementBanner";
+import OwnedByNotice from "./components/common/OwnedByNotice";
+import { ROLE_HOME } from "./lib/nav";
+
 import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
 import DashboardPage from "./pages/DashboardPage";
 import LeaveApplyPage from "./pages/LeaveApplyPage";
 import LeaveHistoryPage from "./pages/LeaveHistoryPage";
 import CalendarPage from "./pages/CalendarPage";
+import ProfilePage from "./pages/ProfilePage";
+import SecurityPage from "./pages/SecurityPage";
+import AnnouncementsAdminPage from "./pages/AnnouncementsAdminPage";
+import InvitationsPage from "./pages/InvitationsPage";
+import EntitlementsPage from "./pages/EntitlementsPage";
+import HRAdminHomePage from "./pages/HRAdminHomePage";
 
 function AppShell({ children }) {
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800">
       <Navbar />
+      <AnnouncementBanner />
       <div className="max-w-6xl mx-auto flex gap-6 px-4 py-6">
         <Sidebar />
         <main className="flex-1 min-w-0">{children}</main>
@@ -23,48 +35,11 @@ function AppShell({ children }) {
   );
 }
 
-// Approval Queue and Admin UI (UC-02, UC-10) are owned by Member 2's build.
-// This module only covers the Employee Experience (UC-01, UC-03, UC-08, UC-09).
-function NonEmployeeNotice() {
-  const { user, logout } = useAuth();
-  return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-sm p-8 max-w-md text-center">
-        <p className="text-sm text-slate-500 mb-2">Signed in as</p>
-        <p className="font-semibold text-lg">
-          {user.name} · {user.role}
-        </p>
-        <p className="text-sm text-slate-500 mt-4">
-          The Approval Queue and HR Admin panel for this role live in Member 2's build. This
-          module covers the Employee Experience only.
-        </p>
-        <button
-          onClick={logout}
-          className="mt-5 text-sm bg-teal-800 hover:bg-teal-700 text-white rounded-lg px-4 py-2"
-        >
-          Log out
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function EmployeeArea() {
+// Sends an authenticated user to their role's default landing page — used
+// for "/" and any unmatched path so every role always has somewhere to go.
+function RoleHomeRedirect() {
   const { user } = useAuth();
-
-  if (user.role !== "EMPLOYEE") return <NonEmployeeNotice />;
-
-  return (
-    <AppShell>
-      <Routes>
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/apply" element={<LeaveApplyPage />} />
-        <Route path="/history" element={<LeaveHistoryPage />} />
-        <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </AppShell>
-  );
+  return <Navigate to={ROLE_HOME[user.role] ?? "/profile"} replace />;
 }
 
 export default function App() {
@@ -74,11 +49,103 @@ export default function App() {
         <Toaster position="bottom-center" />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+
           <Route
             path="/*"
             element={
               <ProtectedRoute>
-                <EmployeeArea />
+                <AppShell>
+                  <Routes>
+                    {/* Member 1 — available to every role */}
+                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/security" element={<SecurityPage />} />
+
+                    {/* Employee Experience vertical */}
+                    <Route
+                      path="/dashboard"
+                      element={
+                        <ProtectedRoute roles={["EMPLOYEE"]}>
+                          <DashboardPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/apply"
+                      element={
+                        <ProtectedRoute roles={["EMPLOYEE"]}>
+                          <LeaveApplyPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/history"
+                      element={
+                        <ProtectedRoute roles={["EMPLOYEE"]}>
+                          <LeaveHistoryPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/calendar"
+                      element={
+                        <ProtectedRoute roles={["EMPLOYEE"]}>
+                          <CalendarPage />
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    {/* Approval, Delegation & Notification vertical */}
+                    <Route
+                      path="/approvals"
+                      element={
+                        <ProtectedRoute roles={["SUPERVISOR", "MANAGER"]}>
+                          <OwnedByNotice
+                            title="Approval queue"
+                            description="The Supervisor/Manager approval queue and AI-3 summary cards live in the Approval, Delegation & Notification vertical."
+                          />
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    {/* HR Admin, Analytics & Automation vertical + Member 1's HR-facing screens */}
+                    <Route
+                      path="/admin"
+                      element={
+                        <ProtectedRoute roles={["HR_ADMIN"]}>
+                          <HRAdminHomePage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/invitations"
+                      element={
+                        <ProtectedRoute roles={["HR_ADMIN"]}>
+                          <InvitationsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/announcements"
+                      element={
+                        <ProtectedRoute roles={["HR_ADMIN"]}>
+                          <AnnouncementsAdminPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/entitlements"
+                      element={
+                        <ProtectedRoute roles={["HR_ADMIN"]}>
+                          <EntitlementsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route path="/" element={<RoleHomeRedirect />} />
+                    <Route path="*" element={<RoleHomeRedirect />} />
+                  </Routes>
+                </AppShell>
               </ProtectedRoute>
             }
           />
