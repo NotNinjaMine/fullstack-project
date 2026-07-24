@@ -1,51 +1,51 @@
-// Email sender for the forgot-password + invitation flows. If SMTP_* is set it
-// sends via nodemailer; otherwise it logs the link to the console (demo mode)
-// and the route additionally returns a demo token so the flow works offline.
-const env = require('../config/env');
+// M1 (UC-24/UC-25 support): sends the reset/invite link by email when SMTP is
+// configured; otherwise logs the link to the console so the flow still works
+// fully offline (the route handlers additionally echo the raw token in the
+// API response in that case — see routes/user.js and routes/invitation.js).
+const nodemailer = require('nodemailer');
 
-const smtpConfigured = () =>
-  !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+const smtpConfigured = () => !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 
-const transport = () => {
-  // Lazily required so the server runs without nodemailer installed in demo mode.
-  const nodemailer = require('nodemailer');
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: Number(process.env.SMTP_PORT) === 465,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
+let transporter = null;
+const getTransporter = () => {
+    if (!transporter && smtpConfigured()) {
+        transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: Number(process.env.SMTP_PORT) || 587,
+            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+        });
+    }
+    return transporter;
 };
 
-const sendLink = async (toEmail, subject, intro, url) => {
-  if (!smtpConfigured()) {
-    console.log(`[mailer] SMTP not configured — ${subject} for ${toEmail}:`);
-    console.log(`[mailer]   ${url}`);
-    return { sent: false, url };
-  }
-  await transport().sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to: toEmail,
-    subject,
-    text: `${intro}\n\n${url}\n`,
-  });
-  return { sent: true };
+// Shared sender: Login.jsx tells reset links (?resetToken=) and invite links
+// (?inviteToken=) apart by query param name, so each needs its own builder —
+// sending an invite down the reset link would never open the accept-invite form.
+const sendLink = async ({ toEmail, param, token, subject, intro }) => {
+    const link = `${process.env.CLIENT_URL || ''}/?${param}=${token}`;
+
+    if (!smtpConfigured()) {
+        console.log(`[mailer] (demo mode, no SMTP configured) ${subject} link for ${toEmail}: ${link}`);
+        return { demo: true };
+    }
+
+    const info = await getTransporter().sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: toEmail,
+        subject: `Innovare Leave Management System — ${subject}`,
+        text: `${intro} ${link}\nThis link expires soon and can only be used once.`
+    });
+    return { demo: false, messageId: info.messageId };
 };
 
-const sendResetEmail = (toEmail, token) =>
-  sendLink(
-    toEmail,
-    'Reset your Leave Management System password',
-    'We received a request to reset your password. Open this link (valid 30 minutes):',
-    `${env.CLIENT_URL}/login?resetToken=${token}`
-  );
+const sendResetEmail = (toEmail, token) => sendLink({
+    toEmail, token, param: 'resetToken', subject: 'Password reset',
+    intro: 'Use this link to reset your password:'
+});
 
-const sendInviteEmail = (toEmail, token) =>
-  sendLink(
-    toEmail,
-    'You are invited to the Leave Management System',
-    'Complete your registration (link valid 48 hours):',
-    `${env.CLIENT_URL}/register?inviteToken=${token}`
-  );
+const sendInviteEmail = (toEmail, token) => sendLink({
+    toEmail, token, param: 'inviteToken', subject: 'You are invited',
+    intro: 'Use this link to activate your account:'
+});
 
-module.exports = { smtpConfigured, sendResetEmail, sendInviteEmail };
+module.exports = { sendResetEmail, sendInviteEmail, smtpConfigured };

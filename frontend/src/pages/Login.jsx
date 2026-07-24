@@ -1,27 +1,21 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { login, forgotPassword, resetPassword } from "../services/authService";
-import useAuth from "../hooks/useAuth";
-import { ROLE_HOME } from "../lib/nav";
+import http from "../lib/http";
 
 const DEMO = [
-  { e: "weiling@innovare.com", label: "Wei Ling · Employee" },
-  { e: "priya@innovare.com", label: "Priya · Employee" },
-  { e: "marcus@innovare.com", label: "Marcus · Supervisor" },
-  { e: "diana@innovare.com", label: "Diana · Manager" },
+  { e: "weiling@innovare.com", label: "Wei Ling · Employee (SG)" },
+  { e: "linh@innovare.com", label: "Linh · Employee (VN)" },
+  { e: "somchai@innovare.com", label: "Somchai · Employee (TH)" },
+  { e: "priya@innovare.com", label: "Priya · Employee (SG)" },
+  { e: "marcus@innovare.com", label: "Marcus · Supervisor (Team A)" },
+  { e: "diana@innovare.com", label: "Diana · Manager (Team A)" },
+  { e: "aiden@innovare.com", label: "Aiden · Supervisor (Team B)" },
+  { e: "grace@innovare.com", label: "Grace · Manager (Team B)" },
   { e: "hr@innovare.com", label: "Aisha · HR Admin" },
 ];
 
-const inputCls =
-  "mt-1 w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500";
+const inputCls = "lf-input";
 
-// UC-01: login. Redirects to /dashboard once credentials check out.
-// UC-23: also hosts the standard "forgot password" email-link flow, and
-// picks up a ?resetToken= link the same way an email client would deliver it.
-export default function LoginPage() {
-  const { loginUser } = useAuth();
-  const navigate = useNavigate();
-
+export default function Login({ onLogin }) {
   // mode: "login" | "forgot" | "reset"
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -30,17 +24,37 @@ export default function LoginPage() {
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // reset form state
   const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  // M1 (UC-24) invite/onboarding state
+  const [inviteToken, setInviteToken] = useState("");
+  const [invitee, setInvitee] = useState(null); // { email, name, country, team, role }
+  const [inviteLocale, setInviteLocale] = useState("en");
+
+  // Arriving from an email link: /?resetToken=... opens the reset form directly.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const t = params.get("resetToken");
+    const inv = params.get("inviteToken");
     if (t) {
       setResetToken(t);
       setMode("reset");
-      window.history.replaceState({}, "", "/login");
+      window.history.replaceState({}, "", "/");
+    } else if (inv) {
+      setInviteToken(inv);
+      window.history.replaceState({}, "", "/");
+      http
+        .get(`/invitation/verify?token=${encodeURIComponent(inv)}`)
+        .then((res) => {
+          setInvitee(res.data);
+          setMode("invite");
+        })
+        .catch((err) => {
+          setError(err.response?.data?.message || "This invitation link is invalid or has expired.");
+        });
     }
   }, []);
 
@@ -53,35 +67,41 @@ export default function LoginPage() {
   const attempt = () => {
     setBusy(true);
     setError("");
-    login(email, password)
-      .then(({ accessToken, user }) => {
-        loginUser(accessToken, user);
-        navigate(ROLE_HOME[user.role] ?? "/profile", { replace: true });
+    http
+      .post("/user/login", { email, password })
+      .then((res) => {
+        localStorage.setItem("accessToken", res.data.accessToken);
+        onLogin(res.data.user);
       })
       .catch((err) => {
         setError(err.response?.data?.message || "Login failed.");
-      })
-      .finally(() => setBusy(false));
+        setBusy(false);
+      });
   };
 
   const requestReset = () => {
     setBusy(true);
     setError("");
     setInfo("");
-    forgotPassword(email)
+    http
+      .post("/user/forgot-password", { email })
       .then((res) => {
-        setInfo(res.message);
-        // Demo mode: no email server exists in a client-only mock, so the
-        // token is returned directly and the flow drops straight into reset.
-        if (res.demoResetToken) {
-          setResetToken(res.demoResetToken);
+        setInfo(res.data.message);
+        // Demo mode (no SMTP on the server): the API returns the token so the
+        // flow can be completed offline. With SMTP configured, the token only
+        // arrives by email and this branch never runs.
+        if (res.data.demoResetToken) {
+          setResetToken(res.data.demoResetToken);
           setMode("reset");
           setInfo(
-            "Demo mode: no email server configured, so your reset code was filled in below. In production this code arrives by email only."
+            "Demo mode: no email server configured, so your reset code was filled in below. " +
+              "In production this code arrives by email only."
           );
         }
       })
-      .catch((err) => setError(err.response?.data?.message || "Request failed."))
+      .catch((err) =>
+        setError(err.response?.data?.message || (err.response?.data?.errors || []).join("; ") || "Request failed.")
+      )
       .finally(() => setBusy(false));
   };
 
@@ -92,16 +112,47 @@ export default function LoginPage() {
     }
     setBusy(true);
     setError("");
-    resetPassword(resetToken.trim(), newPassword)
+    http
+      .post("/user/reset-password", { token: resetToken.trim(), password: newPassword })
       .then((res) => {
         setPassword("");
         setNewPassword("");
         setConfirmPassword("");
         setResetToken("");
         switchMode("login");
-        setInfo(res.message);
+        setInfo(res.data.message);
       })
-      .catch((err) => setError(err.response?.data?.message || "Reset failed."))
+      .catch((err) =>
+        setError(err.response?.data?.message || (err.response?.data?.errors || []).join("; ") || "Reset failed.")
+      )
+      .finally(() => setBusy(false));
+  };
+
+  // M1 (UC-24): new employee sets a password + preferences to activate the account.
+  const submitInvite = () => {
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    http
+      .post("/invitation/accept", {
+        token: inviteToken.trim(),
+        password: newPassword,
+        locale: inviteLocale,
+      })
+      .then((res) => {
+        setNewPassword("");
+        setConfirmPassword("");
+        setInviteToken("");
+        setInvitee(null);
+        switchMode("login");
+        setInfo(res.data.message + " You can now sign in with your email and new password.");
+      })
+      .catch((err) =>
+        setError(err.response?.data?.message || (err.response?.data?.errors || []).join("; ") || "Activation failed.")
+      )
       .finally(() => setBusy(false));
   };
 
@@ -113,7 +164,8 @@ export default function LoginPage() {
           <h1 className="text-2xl font-semibold text-white mt-1">Leave Management System</h1>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="bg-lf-surface rounded-2xl shadow-lf-lg border border-lf-border/60 p-6">
+          {/* ---------------- SIGN IN ---------------- */}
           {mode === "login" && (
             <>
               <h2 className="font-semibold mb-4">Sign in</h2>
@@ -164,7 +216,7 @@ export default function LoginPage() {
               <button
                 onClick={attempt}
                 disabled={busy || !email || !password}
-                className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-slate-300 text-white font-medium rounded-lg py-2.5"
+                className="lf-btn lf-btn-primary w-full py-2.5"
               >
                 {busy ? "Signing in…" : "Sign in"}
               </button>
@@ -191,6 +243,7 @@ export default function LoginPage() {
             </>
           )}
 
+          {/* ---------------- FORGOT PASSWORD ---------------- */}
           {mode === "forgot" && (
             <>
               <h2 className="font-semibold mb-1">Reset your password</h2>
@@ -224,7 +277,7 @@ export default function LoginPage() {
               <button
                 onClick={requestReset}
                 disabled={busy || !email}
-                className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-slate-300 text-white font-medium rounded-lg py-2.5"
+                className="lf-btn lf-btn-primary w-full py-2.5"
               >
                 {busy ? "Sending…" : "Send reset link"}
               </button>
@@ -234,9 +287,16 @@ export default function LoginPage() {
               >
                 ← Back to sign in
               </button>
+              <p className="text-xs text-slate-400 mt-3">
+                Already have a reset code?{" "}
+                <button onClick={() => switchMode("reset")} className="text-teal-700 underline">
+                  Enter it here
+                </button>
+              </p>
             </>
           )}
 
+          {/* ---------------- SET NEW PASSWORD ---------------- */}
           {mode === "reset" && (
             <>
               <h2 className="font-semibold mb-1">Choose a new password</h2>
@@ -290,9 +350,85 @@ export default function LoginPage() {
               <button
                 onClick={submitReset}
                 disabled={busy || !resetToken || !newPassword || !confirmPassword}
-                className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-slate-300 text-white font-medium rounded-lg py-2.5"
+                className="lf-btn lf-btn-primary w-full py-2.5"
               >
                 {busy ? "Updating…" : "Update password"}
+              </button>
+              <button
+                onClick={() => switchMode("login")}
+                className="w-full mt-2 text-sm text-slate-500 hover:text-slate-700 py-2"
+              >
+                ← Back to sign in
+              </button>
+            </>
+          )}
+
+          {/* ---------------- ACCEPT INVITATION (UC-24) ---------------- */}
+          {mode === "invite" && (
+            <>
+              <h2 className="font-semibold mb-1">Welcome to Innovare{invitee?.name ? `, ${invitee.name.split(" ")[0]}` : ""}</h2>
+              <p className="text-sm text-slate-500 mb-4">
+                Set a password to activate your account, then sign in.
+              </p>
+
+              {invitee && (
+                <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
+                  <p><span className="text-slate-400">Email:</span> {invitee.email}</p>
+                  <p><span className="text-slate-400">Role:</span> {invitee.role} · {invitee.country} · {invitee.team}</p>
+                </div>
+              )}
+
+              <label className="block mb-3">
+                <span className="text-sm text-slate-600">New password</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                  className={inputCls}
+                />
+                <span className="text-xs text-slate-400">Min 8 characters, at least 1 letter and 1 number.</span>
+              </label>
+              <label className="block mb-3">
+                <span className="text-sm text-slate-600">Confirm password</span>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submitInvite()}
+                  autoComplete="new-password"
+                  className={inputCls}
+                />
+              </label>
+              <label className="block mb-4">
+                <span className="text-sm text-slate-600">Preferred language</span>
+                <select
+                  value={inviteLocale}
+                  onChange={(e) => setInviteLocale(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="en">English</option>
+                  <option value="zh">中文</option>
+                  <option value="th">ไทย</option>
+                  <option value="vi">Tiếng Việt</option>
+                  <option value="ms">Bahasa Melayu</option>
+                  <option value="id">Bahasa Indonesia</option>
+                  <option value="ja">日本語</option>
+                </select>
+              </label>
+
+              {error && (
+                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2.5 mb-4">
+                  {error}
+                </p>
+              )}
+
+              <button
+                onClick={submitInvite}
+                disabled={busy || !newPassword || !confirmPassword}
+                className="lf-btn lf-btn-primary w-full py-2.5"
+              >
+                {busy ? "Activating…" : "Activate my account"}
               </button>
               <button
                 onClick={() => switchMode("login")}

@@ -1,0 +1,71 @@
+// ============================================================================
+// MEMBER 1 — slices contributed to the CO-OWNED client/src/pages/Admin.jsx
+// ============================================================================
+// Admin.jsx is primarily Member 5's HR admin panel, but Member 1's UC-20
+// (bulk entitlement / pro-ration) and UC-25 (HR lockout / force-logout)
+// controls are embedded in it. They share Admin.jsx's component state
+// (busy, load(), form) so they cannot be lifted into a standalone file
+// without refactoring. This file reproduces ONLY Member 1's lines, for
+// reference / review. Line numbers refer to the original Admin.jsx.
+// ----------------------------------------------------------------------------
+
+// --- Handlers (original Admin.jsx lines ~166-184) ---
+  const bulkEntitlement = () => {
+    setBusy(true);
+    http.post("/admin/entitlement/commit", {})
+      .then((res) => { toast.success(res.data.message); load(); })
+      .catch((err) => toast.error(err.response?.data?.message || "Update failed."))
+      .finally(() => setBusy(false));
+  };
+  // M1 (UC-25): HR can clear a lockout or force-logout a user's sessions.
+  const unlock = (id) => {
+    http.put(`/user/${id}/unlock`)
+      .then((res) => { toast.success(res.data.message); load(); })
+      .catch((err) => toast.error(err.response?.data?.message || "Unlock failed."));
+  };
+  const forceLogout = (id) => {
+    http.put(`/user/${id}/force-logout`)
+      .then((res) => toast.success(res.data.message))
+      .catch((err) => toast.error(err.response?.data?.message || "Force-logout failed."));
+  };
+  const isLocked = (u) => u.lockedUntil && new Date(u.lockedUntil) > new Date();
+
+// --- UC-20 button (original line ~190) ---
+        <button type="button" disabled={busy} onClick={bulkEntitlement} className="lf-btn lf-btn-outline lf-btn-sm">Apply bulk entitlement (this year)</button>
+
+// --- UC-25 lockout badge + unlock/force-logout controls (original lines ~231-262) ---
+              const locked = isLocked(u);
+              return (
+                <tr key={u.id} className="border-b border-lf-border/60">
+                  <td className="py-1.5">{u.name}</td>
+                  <td>{u.role}</td>
+                  <td>{u.country}</td>
+                  <td>{u.team}</td>
+                  <td>{annual ? annual.remaining : "—"}</td>
+                  <td>{sick ? sick.remaining : "—"}</td>
+                  <td>
+                    {locked ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800">
+                        Locked until {new Date(u.lockedUntil).toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    ) : u.status === "INVITED" ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Invited (pending)</span>
+                    ) : u.status === "DEACTIVATED" ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">Deactivated</span>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Active</span>
+                    )}
+                  </td>
+                  <td>
+                    <div className="flex gap-1.5">
+                      {locked && (
+                        <button type="button" onClick={() => unlock(u.id)} className="lf-btn lf-btn-sm lf-btn-outline">
+                          Unlock
+                        </button>
+                      )}
+                      <button type="button" onClick={() => forceLogout(u.id)} className="lf-btn lf-btn-sm lf-btn-outline">
+                        Force logout
+                      </button>
+
+// --- UC-20 pro-ration start-date input on the Add-employee form (original line ~762) ---
+          <input type="date" className="lf-input" title="Start date (for pro-ration)" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />

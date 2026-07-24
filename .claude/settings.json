@@ -58,7 +58,22 @@
       "Bash(python3 -)",
       "Bash(node -e ' *)",
       "Bash(git mv *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server)",
+      "Bash(sudo mysql -uroot -e ' *)",
+      "Bash(mysql -uroot -p'JorVenti2751*' -e \"SELECT 1;\")",
+      "Bash(sudo service mysql status)",
+      "Bash(sudo service mysql start)",
+      "Bash(sudo tail -30 /var/log/mysql/error.log)",
+      "Bash(mysql -h127.0.0.1 -uroot -p'JorVenti2751*' -e \"SHOW DATABASES;\")",
+      "Bash(sudo mysql -uroot -e \"CREATE DATABASE IF NOT EXISTS \\\\`leave\\\\` CHARACTER SET utf8mb4;\")",
+      "Bash(mysql -h127.0.0.1 -uroot -p'JorVenti2751*' -e \"CREATE DATABASE IF NOT EXISTS \\\\`leave\\\\` CHARACTER SET utf8mb4; SHOW DATABASES;\")",
+      "Bash(node seed.js)",
+      "Bash(curl -sv http://localhost:3001/)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{JSON.parse\\(d\\).forEach\\(u=>console.log\\(u.name,u.country,u.annual\\)\\)}\\)\")",
+      "Bash(npx vite *)",
+      "Bash(node /tmp/claude-1000/-workspaces-fullstack-project/54015c83-45df-4615-bd97-847b60397b1b/scratchpad/build_log.mjs /workspaces/fullstack-project/ai/jordon/ai-logs/2026-07-24T15-49-12.jsonl)",
+      "Bash(node -e \"process.stdin.on\\('data', d => d.toString\\(\\).split\\('\\\\n'\\).filter\\(Boolean\\).forEach\\(l => JSON.parse\\(l\\)\\)\\)\")"
     ],
     "additionalDirectories": [
       "/tmp"
