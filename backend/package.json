@@ -1,0 +1,32 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Leave Management System API — Member 1 (Platform, Identity & Self-Service)",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "seed": "node seed.js",
+    "test": "node tests/smoke.mjs"
+  },
+  "author": "Member 1",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "sequelize": "^6.37.2",
+    "sqlite3": "^5.1.7",
+    "yup": "^1.4.0"
+  },
+  "optionalDependencies": {
+    "mysql2": "^3.9.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "supertest": "^7.0.0"
+  }
+}
