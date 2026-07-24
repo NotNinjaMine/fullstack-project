@@ -18,7 +18,7 @@ and bulk entitlement / pro-ration.
 ## Run
 
 ```bash
-cd server
+cd backend
 npm install
 cp .env.example .env      # optional — sensible SQLite/demo defaults if omitted
 npm run seed              # 6 demo accounts, 10 country policies, sample data

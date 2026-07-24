@@ -1,5 +1,5 @@
 {
-  "name": "server",
+  "name": "backend",
   "version": "1.0.0",
   "description": "Leave Management System API — Member 1 (Platform, Identity & Self-Service)",
   "main": "index.js",

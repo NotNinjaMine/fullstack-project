@@ -6,7 +6,7 @@ const api = axios.create({
 });
 
 // Mock the API by default so the client runs standalone. Member 1's real
-// backend (../server) implements the M1 endpoints; set VITE_USE_MOCK_API=false
+// backend (../backend) implements the M1 endpoints; set VITE_USE_MOCK_API=false
 // to use it. Other verticals' endpoints (/leave, /holiday, /ai) still need the
 // mock until their backends are assembled — see .env.example.
 if (import.meta.env.VITE_USE_MOCK_API !== "false") {

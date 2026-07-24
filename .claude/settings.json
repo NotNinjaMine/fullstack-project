@@ -56,7 +56,9 @@
       "Bash(pkill -f \"vite --port\")",
       "Bash(git -C /workspaces/fullstack-project/jordon rev-parse --show-toplevel)",
       "Bash(python3 -)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(git mv *)",
+      "Bash(git rm *)"
     ],
     "additionalDirectories": [
       "/tmp"
