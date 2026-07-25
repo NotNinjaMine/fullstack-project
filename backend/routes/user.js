@@ -8,7 +8,7 @@ const yup = require("yup");
 const { sign } = require('jsonwebtoken');
 const { validateToken, requireRole } = require('../middlewares/auth');
 const { createUserWithBalances, initialsOf } = require('../services/provisioning');
-const { sendResetEmail, smtpConfigured } = require('../services/mailer');
+const { sendResetEmail } = require('../services/mailer');
 const session = require('../services/sessionService');
 require('dotenv').config();
 
@@ -164,16 +164,24 @@ router.post("/forgot-password", async (req, res) => {
         user.resetTokenExpires = new Date(Date.now() + 30 * 60 * 1000);
         await user.save();
 
-        await sendResetEmail(user.email, token);
+        const mail = await sendResetEmail(user.email, token, user.name);
+
+        // A delivery failure is logged server-side but NOT surfaced here: the
+        // response has to stay byte-identical whether or not the address exists,
+        // otherwise this endpoint becomes an account-enumeration oracle.
+        if (!mail.ok && !mail.demo) {
+            console.error(`[forgot-password] reset email to ${user.email} failed: ${mail.error}`);
+        }
 
         // DEMO ONLY: with no SMTP configured there is no email to click, so we
         // return the token to keep the flow demonstrable end-to-end offline.
-        // In production (SMTP configured) the token NEVER leaves the server.
-        const demo = !smtpConfigured() ? { demoResetToken: token } : {};
+        // Once SMTP is configured the token NEVER leaves the server.
+        const demo = mail.demo ? { demoResetToken: token } : {};
         res.json({ message: genericMsg, ...demo });
     }
     catch (err) {
-        res.status(400).json({ errors: err.errors });
+        if (err.errors) return res.status(400).json({ errors: err.errors });
+        res.status(400).json({ message: err.message || "Could not process that request." });
     }
 });
 
@@ -392,11 +400,16 @@ router.get("/security-log", validateToken, async (req, res) => {
 
 // GET /user/locked — accounts currently locked out (for the Manager/HR unlock UI)
 router.get("/locked", validateToken, requireRole("MANAGER", "HR_ADMIN"), async (req, res) => {
-    const list = await User.findAll({
-        where: { lockedUntil: { [Op.gt]: new Date() } },
-        attributes: ["id", "name", "email", "role", "team", "lockedUntil"]
-    });
-    res.json(list);
+    try {
+        const list = await User.findAll({
+            where: { lockedUntil: { [Op.gt]: new Date() } },
+            attributes: ["id", "name", "email", "role", "team", "lockedUntil"]
+        });
+        res.json(list);
+    } catch (err) {
+        console.error(`[user] /locked failed: ${err.message}`);
+        res.status(500).json({ message: "Could not load locked accounts." });
+    }
 });
 
 // PUT /user/:id/unlock — clears a lockout

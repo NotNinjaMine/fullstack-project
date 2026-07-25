@@ -44,6 +44,13 @@ if (require.main === module) {
             // require('./services/notificationService').startReminderScheduler();
             // require('./services/reportScheduleService').startReportScheduler();
 
+            // Make mail configuration obvious at boot — a silent demo-mode
+            // fallback is the usual reason reset/invite emails "never arrive".
+            const { smtpConfigured } = require('./services/mailer');
+            console.log(smtpConfigured()
+                ? `✉  SMTP configured (${process.env.SMTP_HOST}) — reset & invite links will be emailed.`
+                : `✉  SMTP NOT configured — DEMO MODE: reset & invite links are logged here, not emailed. Run "npm run mail:test" for help.`);
+
             let port = process.env.APP_PORT;
             app.listen(port, () => {
                 console.log(`⚡ Server running on http://localhost:${port}`);

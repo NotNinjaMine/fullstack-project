@@ -73,7 +73,19 @@
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{JSON.parse\\(d\\).forEach\\(u=>console.log\\(u.name,u.country,u.annual\\)\\)}\\)\")",
       "Bash(npx vite *)",
       "Bash(node /tmp/claude-1000/-workspaces-fullstack-project/54015c83-45df-4615-bd97-847b60397b1b/scratchpad/build_log.mjs /workspaces/fullstack-project/ai/jordon/ai-logs/2026-07-24T15-49-12.jsonl)",
-      "Bash(node -e \"process.stdin.on\\('data', d => d.toString\\(\\).split\\('\\\\n'\\).filter\\(Boolean\\).forEach\\(l => JSON.parse\\(l\\)\\)\\)\")"
+      "Bash(node -e \"process.stdin.on\\('data', d => d.toString\\(\\).split\\('\\\\n'\\).filter\\(Boolean\\).forEach\\(l => JSON.parse\\(l\\)\\)\\)\")",
+      "Bash(command -v openssl)",
+      "Bash(openssl req *)",
+      "Bash(mysql -h127.0.0.1 -uroot -p'JorVenti2751*' leave -e \"SELECT COUNT\\(*\\) c FROM users;\")",
+      "Bash(SMTP_HOST=127.0.0.1 SMTP_PORT=2587 SMTP_USER=lms@innovare.com SMTP_PASS=pw NODE_TLS_REJECT_UNAUTHORIZED=0 npm run --silent mail:test -- someone@example.com)",
+      "Bash(grep -vE \"^\\\\\\(node:|Use \\\\`node\")",
+      "Bash(pkill -f smtp-sink.js)",
+      "Bash(curl -s -m 10 http://localhost:3001/invitation/verify?token=b6f494e1ed4f03f448a0ac7b9a5e168eedf053db4cb859d8a5b3140ee61ae842)",
+      "Bash(curl -s -m 10 -X POST http://localhost:3001/invitation/accept -H 'Content-Type: application/json' -d '{\"token\":\"b6f494e1ed4f03f448a0ac7b9a5e168eedf053db4cb859d8a5b3140ee61ae842\",\"password\":\"fallback123\"}')",
+      "Bash(curl -s -m 10 -X POST http://localhost:3001/user/login -H 'Content-Type: application/json' -d '{\"email\":\"brokensmtp@innovare.com\",\"password\":\"fallback123\"}')",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\(j.accessToken?'OK logged in as '+j.user.name+' \\('+j.user.role+'\\)':j.message\\)}\\)\")",
+      "Bash(awk '/^router\\\\./{name=$0; guarded=\"NO\"} /try \\\\{/{if\\(name\\)guarded=\"YES\"} /^}\\\\\\);/{if\\(name\\){print \\(guarded==\"YES\"?\"  guarded  \":\"UNGUARDED \"\\) substr\\(name,1,60\\); name=\"\"}}' routes/admin.js)",
+      "Bash(sed -n '/user\\\\/locked/,/^}\\);/p' routes/user.js)"
     ],
     "additionalDirectories": [
       "/tmp"

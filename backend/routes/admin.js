@@ -10,36 +10,49 @@ const { previewBulkEntitlement, commitBulkEntitlement } = require('../services/e
 
 // GET /admin/users — every account + this year's annual/sick balances, for
 // the HR user table (status, lockout badge, unlock / force-logout controls).
+// Express 4 does not catch rejections from async handlers, so every one of these
+// needs its own try/catch — without it a DB error leaves the request hanging
+// with no response rather than returning an error the UI can show.
 router.get("/users", validateToken, requireRole("HR_ADMIN"), async (req, res) => {
-    const year = new Date().getFullYear();
-    const users = await User.findAll({
-        attributes: ["id", "name", "email", "role", "country", "team", "status", "failedLoginCount", "lockedUntil"],
-        order: [['name', 'ASC']]
-    });
-    const balances = await LeaveBalance.findAll({ where: { year } });
-    const byUser = {};
-    for (const b of balances) {
-        (byUser[b.userId] ||= []).push(b);
+    try {
+        const year = new Date().getFullYear();
+        const users = await User.findAll({
+            attributes: ["id", "name", "email", "role", "country", "team", "status", "failedLoginCount", "lockedUntil"],
+            order: [['name', 'ASC']]
+        });
+        const balances = await LeaveBalance.findAll({ where: { year } });
+        const byUser = {};
+        for (const b of balances) {
+            (byUser[b.userId] ||= []).push(b);
+        }
+        res.json(users.map((u) => {
+            const bals = byUser[u.id] || [];
+            const annual = bals.find((b) => b.leaveType === "annual");
+            const sick = bals.find((b) => b.leaveType === "sick_mc");
+            return {
+                ...u.toJSON(),
+                annual: annual ? { entitled: Number(annual.entitled), remaining: Number(annual.entitled) + Number(annual.carried) - Number(annual.used) } : null,
+                sick: sick ? { entitled: Number(sick.entitled), remaining: Number(sick.entitled) - Number(sick.used) } : null
+            };
+        }));
+    } catch (err) {
+        console.error(`[admin] /users failed: ${err.message}`);
+        res.status(500).json({ message: "Could not load accounts." });
     }
-    res.json(users.map((u) => {
-        const bals = byUser[u.id] || [];
-        const annual = bals.find((b) => b.leaveType === "annual");
-        const sick = bals.find((b) => b.leaveType === "sick_mc");
-        return {
-            ...u.toJSON(),
-            annual: annual ? { entitled: Number(annual.entitled), remaining: Number(annual.entitled) + Number(annual.carried) - Number(annual.used) } : null,
-            sick: sick ? { entitled: Number(sick.entitled), remaining: Number(sick.entitled) - Number(sick.used) } : null
-        };
-    }));
 });
 
 /* ---------------- UC-20: bulk yearly entitlement ---------------- */
 
 // GET /admin/entitlement/preview?year= — computed changes, no writes yet
 router.get("/entitlement/preview", validateToken, requireRole("HR_ADMIN"), async (req, res) => {
-    const year = Number(req.query.year) || new Date().getFullYear();
-    const preview = await previewBulkEntitlement(year);
-    res.json(preview);
+    try {
+        const year = Number(req.query.year) || new Date().getFullYear();
+        const preview = await previewBulkEntitlement(year);
+        res.json(preview);
+    } catch (err) {
+        console.error(`[admin] entitlement preview failed: ${err.message}`);
+        res.status(500).json({ message: "Could not compute the entitlement preview." });
+    }
 });
 
 // POST /admin/entitlement/commit — apply the country-minimum entitlement to every user

@@ -52,19 +52,38 @@ export default function Admin({ user, setToast }) {
       .finally(() => setBusy(false));
   };
 
+  // Surfaces the fallback link whenever the server couldn't email it — either
+  // demo mode (no SMTP) or a genuine delivery failure (HTTP 207).
+  const showFallbackLink = (data) => {
+    if (data.inviteLink) return setLastInviteLink(data.inviteLink);
+    if (data.demoInviteToken) return setLastInviteLink(`${window.location.origin}/?inviteToken=${data.demoInviteToken}`);
+    setLastInviteLink(null);
+  };
+
   const sendInvite = () => {
     setBusy(true);
     setLastInviteLink(null);
     http.post("/invitation", invite)
       .then((res) => {
         setToast?.(res.data.message);
-        if (res.data.demoInviteToken) {
-          setLastInviteLink(`${window.location.origin}/?inviteToken=${res.data.demoInviteToken}`);
-        }
+        showFallbackLink(res.data);
         setInvite(emptyInvite);
         load();
       })
       .catch((err) => setToast?.(err.response?.data?.message || (err.response?.data?.errors || []).join("; ") || "Invitation failed."))
+      .finally(() => setBusy(false));
+  };
+
+  const resendInvite = (id) => {
+    setBusy(true);
+    setLastInviteLink(null);
+    http.post(`/invitation/${id}/resend`)
+      .then((res) => {
+        setToast?.(res.data.message);
+        showFallbackLink(res.data);
+        load();
+      })
+      .catch((err) => setToast?.(err.response?.data?.message || "Resend failed."))
       .finally(() => setBusy(false));
   };
 
@@ -207,7 +226,7 @@ export default function Admin({ user, setToast }) {
             </div>
             {lastInviteLink && (
               <p className="text-xs text-lf-text-subtle bg-lf-muted rounded-lg p-2 break-all">
-                Demo mode (no SMTP configured) — share this link directly:<br />
+                This link wasn't emailed — share it with the employee directly:<br />
                 <span className="font-mono">{lastInviteLink}</span>
               </p>
             )}
@@ -216,13 +235,20 @@ export default function Admin({ user, setToast }) {
           <div className="mt-5 pt-4 border-t border-lf-border space-y-1.5 max-h-56 overflow-y-auto">
             {invitations.length === 0 && <p className="text-sm text-lf-text-subtle">No invitations sent yet.</p>}
             {invitations.map((i) => (
-              <div key={i.id} className="flex items-center justify-between text-sm">
-                <span>{i.name} <span className="text-lf-text-subtle">· {i.email}</span></span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  i.status === "ACCEPTED" ? "bg-emerald-100 text-emerald-800"
-                  : i.status === "EXPIRED" ? "bg-slate-200 text-slate-600"
-                  : "bg-amber-100 text-amber-800"
-                }`}>{i.status}</span>
+              <div key={i.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="truncate">{i.name} <span className="text-lf-text-subtle">· {i.email}</span></span>
+                <span className="flex items-center gap-1.5 flex-shrink-0">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    i.status === "ACCEPTED" ? "bg-emerald-100 text-emerald-800"
+                    : i.status === "EXPIRED" ? "bg-slate-200 text-slate-600"
+                    : "bg-amber-100 text-amber-800"
+                  }`}>{i.status}</span>
+                  {i.status !== "ACCEPTED" && (
+                    <button type="button" disabled={busy} onClick={() => resendInvite(i.id)} className="lf-btn lf-btn-ghost lf-btn-sm text-xs">
+                      Resend
+                    </button>
+                  )}
+                </span>
               </div>
             ))}
           </div>

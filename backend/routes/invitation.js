@@ -8,7 +8,7 @@ const yup = require("yup");
 const { validateToken, requireRole } = require('../middlewares/auth');
 const { createUserWithBalances } = require('../services/provisioning');
 const { prorateEntitlement } = require('../services/entitlementService');
-const { sendInviteEmail, smtpConfigured } = require('../services/mailer');
+const { sendInviteEmail } = require('../services/mailer');
 
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const INVITE_TTL_MS = 48 * 60 * 60 * 1000;
@@ -23,10 +23,14 @@ router.post("/", validateToken, requireRole("HR_ADMIN"), async (req, res) => {
         country: yup.string().length(2).uppercase().default("SG"),
         team: yup.string().max(50).default("Compliance Team A"),
         role: yup.string().oneOf(["EMPLOYEE", "SUPERVISOR", "MANAGER"]).default("EMPLOYEE"),
-        startDate: yup.string().matches(/^\d{4}-\d{2}-\d{2}$/).nullable()
+        // Start date is optional (it only drives UC-20 pro-ration), so an empty
+        // field from the HR form must pass validation rather than fail the regex.
+        startDate: yup.string().matches(/^\d{4}-\d{2}-\d{2}$/, { excludeEmptyString: true }).nullable()
     });
     try {
         const data = await validationSchema.validate(req.body, { abortEarly: false });
+        // Blank team from the form means "use the default", not a literal "".
+        if (!data.team) data.team = "Compliance Team A";
 
         const existing = await User.findOne({ where: { email: data.email } });
         if (existing) return res.status(400).json({ message: "Email already exists." });
@@ -53,17 +57,33 @@ router.post("/", validateToken, requireRole("HR_ADMIN"), async (req, res) => {
         });
 
         // Email the invite link (offline mode logs the link + returns a demo token).
-        await sendInviteEmail(data.email, token);
+        const mail = await sendInviteEmail(data.email, token, data.name, req.user.name);
+
         await ConfigAuditLog.create({
             actorName: req.user.name, action: `Invitation sent to ${data.email} (${data.role}, ${data.country})`,
             entity: "user_invitations", entityId: String(invite.id), before: null,
-            after: { email: data.email, role: data.role, country: data.country }
+            after: { email: data.email, role: data.role, country: data.country, emailDelivered: mail.ok }
         });
 
-        const demo = !smtpConfigured() ? { demoInviteToken: token } : {};
+        // The account + invite already exist at this point, so a mail failure is
+        // reported as a partial success with the link attached — otherwise HR is
+        // stranded: the address is taken, so they can't simply re-invite.
+        if (!mail.ok && !mail.demo) {
+            return res.status(207).json({
+                message: `Invitation created for ${data.email}, but the email could not be delivered (${mail.error}). Share the link below directly, or press Resend once SMTP is fixed.`,
+                invitationId: invite.id,
+                emailDelivered: false,
+                inviteLink: mail.link
+            });
+        }
+
+        const demo = mail.demo ? { demoInviteToken: token } : {};
         res.json({
-            message: `Invitation sent to ${data.email}. The link expires in 48 hours.`,
+            message: mail.demo
+                ? `Invitation created for ${data.email}. No email server is configured, so share the link below directly.`
+                : `Invitation emailed to ${data.email}. The link expires in 48 hours.`,
             invitationId: invite.id,
+            emailDelivered: !!mail.ok,
             ...demo
         });
     } catch (err) {
@@ -152,6 +172,55 @@ router.get("/", validateToken, requireRole("HR_ADMIN"), async (req, res) => {
         status: r.acceptedAt ? "ACCEPTED" : (new Date(r.expiresAt) < now ? "EXPIRED" : "PENDING"),
         invitedByName: r.invitedByName, createdAt: r.createdAt, expiresAt: r.expiresAt
     })));
+});
+
+// POST /invitation/:id/resend — HR re-sends an invite (new token, fresh 48h).
+// Needed whenever the first email bounced or the link expired: the invited email
+// address is already taken, so creating a second invitation isn't possible.
+router.post("/:id/resend", validateToken, requireRole("HR_ADMIN"), async (req, res) => {
+    // try/catch is required, not optional: Express 4 does not catch rejected
+    // promises from async handlers, so an unguarded DB error would leave the
+    // request hanging with no response at all instead of returning a 500.
+    try {
+        const invite = await UserInvitation.findByPk(req.params.id);
+        if (!invite) return res.sendStatus(404);
+        if (invite.acceptedAt) {
+            return res.status(400).json({ message: "That invitation has already been accepted." });
+        }
+
+        // Rotate the token so any older link stops working.
+        const token = crypto.randomBytes(32).toString('hex');
+        invite.tokenHash = sha256(token);
+        invite.expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+        await invite.save();
+
+        const mail = await sendInviteEmail(invite.email, token, invite.name, req.user.name);
+
+        await ConfigAuditLog.create({
+            actorName: req.user.name, action: `Invitation resent to ${invite.email}`,
+            entity: "user_invitations", entityId: String(invite.id), before: null,
+            after: { email: invite.email, emailDelivered: mail.ok }
+        });
+
+        if (!mail.ok && !mail.demo) {
+            return res.status(207).json({
+                message: `Could not deliver the email (${mail.error}). Share the refreshed link below directly.`,
+                emailDelivered: false,
+                inviteLink: mail.link
+            });
+        }
+        res.json({
+            message: mail.demo
+                ? `Link refreshed for ${invite.email}. No email server is configured, so share it directly.`
+                : `Invitation re-emailed to ${invite.email}. The new link expires in 48 hours.`,
+            emailDelivered: !!mail.ok,
+            ...(mail.demo ? { demoInviteToken: token } : {})
+        });
+    } catch (err) {
+        // Log the detail server-side; don't echo raw internals to the client.
+        console.error(`[invitation] resend failed for id ${req.params.id}: ${err.message}`);
+        res.status(500).json({ message: "Could not resend the invitation. Please try again." });
+    }
 });
 
 module.exports = router;
