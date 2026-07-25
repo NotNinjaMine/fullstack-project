@@ -2,43 +2,35 @@
 
 const fs = require('fs');
 const path = require('path');
-const { Sequelize, DataTypes } = require('sequelize');
-const env = require('../config/env');
-
+const Sequelize = require('sequelize');
+const process = require('process');
 const basename = path.basename(__filename);
 const db = {};
+require('dotenv').config();
 
-// Dialect-agnostic bootstrap. Defaults to SQLite (zero-infra, runs anywhere);
-// set DB_DIALECT=mysql in .env to point at the team's shared MySQL instead —
-// the model definitions below are identical across dialects.
-let sequelize;
-if (env.DB_DIALECT === 'mysql') {
-  sequelize = new Sequelize(env.DB_NAME, env.DB_USER, env.DB_PWD, {
-    host: env.DB_HOST,
-    port: env.DB_PORT,
-    dialect: 'mysql',
-    logging: false,
-    timezone: '+08:00', // SGT — HQ timezone
-  });
-} else {
-  sequelize = new Sequelize({
-    dialect: 'sqlite',
-    storage: env.DB_STORAGE,
-    logging: false,
-  });
-}
+// Create sequelize instance using config
+let sequelize = new Sequelize(
+  process.env.DB_NAME, process.env.DB_USER, process.env.DB_PWD,
+  {
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT,
+      dialect: 'mysql',
+      logging: false,
+      timezone: '+08:00'
+  }
+);
 
-fs.readdirSync(__dirname)
-  .filter(
-    (file) =>
-      file.indexOf('.') !== 0 && file !== basename && file.slice(-3) === '.js'
-  )
-  .forEach((file) => {
-    const model = require(path.join(__dirname, file))(sequelize, DataTypes);
+fs
+  .readdirSync(__dirname)
+  .filter(file => {
+    return (file.indexOf('.') !== 0) && (file !== basename) && (file.slice(-3) === '.js');
+  })
+  .forEach(file => {
+    const model = require(path.join(__dirname, file))(sequelize, Sequelize.DataTypes);
     db[model.name] = model;
   });
 
-Object.keys(db).forEach((modelName) => {
+Object.keys(db).forEach(modelName => {
   if (db[modelName].associate) {
     db[modelName].associate(db);
   }

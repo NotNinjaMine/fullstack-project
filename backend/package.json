@@ -1,32 +1,31 @@
 {
-  "name": "backend",
+  "name": "server",
   "version": "1.0.0",
-  "description": "Leave Management System API — Member 1 (Platform, Identity & Self-Service)",
+  "description": "Leave Management System API - Innovare (SCCCI AI Challenge 2B)",
   "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
     "seed": "node seed.js",
-    "test": "node tests/smoke.mjs"
+    "test": "jest"
   },
-  "author": "Member 1",
+  "keywords": [],
+  "author": "Group 4",
   "license": "ISC",
   "dependencies": {
-    "bcryptjs": "^2.4.3",
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.9.3",
+    "nodemailer": "^6.9.13",
     "sequelize": "^6.37.2",
-    "sqlite3": "^5.1.7",
     "yup": "^1.4.0"
   },
-  "optionalDependencies": {
-    "mysql2": "^3.9.3"
-  },
   "devDependencies": {
+    "jest": "^29.7.0",
     "nodemon": "^3.1.0",
-    "supertest": "^7.0.0"
+    "supertest": "^7.2.2"
   }
 }
