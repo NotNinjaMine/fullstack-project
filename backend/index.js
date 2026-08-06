@@ -15,21 +15,31 @@ app.get("/", (req, res) => {
     res.send("Welcome to the Innovare Leave Management System API.");
 });
 
-// Routes
-// M1: identity, announcements, invitations / onboarding, HR admin slices
+// Routes — MEMBER 1 BUILD.
+// Only the routers this deliverable needs are mounted. The AI, reporting,
+// coverage-config, holiday, delegation and swap routers (Members 2-5) are not
+// part of this build and their files are not shipped here.
+
+// M1: identity, 2FA, sessions, profile, employee accounts
 const userRoute = require('./routes/user');
 app.use("/user", userRoute);
+// M1: announcements, invitations / onboarding
 const announcementRoute = require('./routes/announcement');
 app.use("/announcement", announcementRoute);
 const invitationRoute = require('./routes/invitation');
 app.use("/invitation", invitationRoute);
+// M1: employee records, staff import, carry-forward, bulk entitlement
 const adminRoute = require('./routes/admin');
 app.use("/admin", adminRoute);
-
-// TODO: mount the other members' routes here once their files land —
-// leaveRequest (M2), publicHoliday/ai (M?), notification/delegation (M3),
-// coverage (M4), report (M5), swap (M2). Left out for now so the server can
-// actually boot with only Member 1's slice in place.
+// Retained dependency (Member 3's router): the HR Admin "Leadership approvals"
+// tab reads /leave/pending and writes /leave/:id/decide, and the employee view
+// reads /leave/balances. Only those endpoints are exercised by this build.
+const leaveRoute = require('./routes/leaveRequest');
+app.use("/leave", leaveRoute);
+// Retained dependency (Member 3's router): the notification bell in the
+// HR Admin and Manager headers.
+const notificationRoute = require('./routes/notification');
+app.use("/notification", notificationRoute);
 
 const db = require('./models');
 
@@ -39,21 +49,43 @@ module.exports = app;
 if (require.main === module) {
     db.sequelize.sync({ alter: true })
         .then(() => {
-            // TODO: re-enable once these land — M3's 24h pending-approval reminder
-            // scheduler and M5's scheduled-report delivery sweep.
-            // require('./services/notificationService').startReminderScheduler();
-            // require('./services/reportScheduleService').startReportScheduler();
-
-            // Make mail configuration obvious at boot — a silent demo-mode
-            // fallback is the usual reason reset/invite emails "never arrive".
-            const { smtpConfigured } = require('./services/mailer');
-            console.log(smtpConfigured()
-                ? `✉  SMTP configured (${process.env.SMTP_HOST}) — reset & invite links will be emailed.`
-                : `✉  SMTP NOT configured — DEMO MODE: reset & invite links are logged here, not emailed. Run "npm run mail:test" for help.`);
+            // M3: 24h pending-approval reminder scheduler (setInterval, no node-cron)
+            require('./services/notificationService').startReminderScheduler();
 
             let port = process.env.APP_PORT;
             app.listen(port, () => {
                 console.log(`⚡ Server running on http://localhost:${port}`);
+                // Make it obvious whether password-reset / invitation emails will
+                // actually be delivered, or fall back to demo links.
+                const mailer = require('./services/mailer');
+                console.log(`✉  ${mailer.mailerStatus()}`);
+                const smsSvc = require('./services/sms');
+                console.log(`📱 ${smsSvc.smsStatus()}`);
+                if (mailer.smtpConfigured()) {
+                    // Authenticate now (without sending) so bad credentials or a
+                    // blocked port surface here, not on the first reset/invite.
+                    mailer.verifyTransport().then((v) => {
+                        if (v.ok) {
+                            console.log("✉  SMTP connection verified — real emails will be delivered.");
+                        } else {
+                            console.error(`✉  SMTP check FAILED: ${v.error}`);
+                            console.error("✉  Reset/invite links will still be shown in-app so the flow keeps working.");
+                        }
+                    });
+                }
+                if (smsSvc.smsConfigured()) {
+                    smsSvc.verifySms().then((v) => {
+                        if (v.ok) {
+                            console.log(`📱 Twilio credentials verified (account ${v.accountStatus}${v.accountType ? `, ${v.accountType}` : ""}).`);
+                            if (v.accountType && /trial/i.test(v.accountType)) {
+                                console.log("📱 Trial account: SMS can only go to numbers verified in the Twilio Console.");
+                            }
+                        } else {
+                            console.error(`📱 Twilio check FAILED: ${v.error}`);
+                            console.error("📱 Phone 2FA codes will be shown in-app instead so login still works.");
+                        }
+                    });
+                }
             });
         })
         .catch((err) => {

@@ -80,32 +80,58 @@ module.exports = (sequelize, DataTypes) => {
         lockedUntil: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        // Why the account is locked. FAILED_LOGINS auto-expires after 15 minutes;
+        // ADMIN is set when a Manager/HR force-logs someone out and stays until an
+        // admin clears it. Both use the same lockedUntil field so they surface in
+        // the same "locked accounts" list with the same Unlock button.
+        lockReason: {
+            type: DataTypes.ENUM("FAILED_LOGINS", "ADMIN"),
+            allowNull: true
+        },
+        // NOTE: email/SMS 2FA is unconditional for every sign-in — the delivery
+        // method is chosen at login time and the live challenge lives in the
+        // two_factor_challenges table.
+        //
+        // The AUTHENTICATOR-APP option below (Microsoft Authenticator / Google
+        // Authenticator / Authy — any TOTP app) is DIFFERENT: it is opt-in per
+        // user because it requires a one-time enrolment (scan a QR code) before
+        // it can be offered. These columns hold that enrolment.
+        //
+        // totpSecret holds the shared TOTP secret ENCRYPTED at rest (AES-256-GCM
+        // via services/totpService), never in plaintext. totpPendingSecret holds
+        // a not-yet-confirmed secret during setup, promoted to totpSecret only
+        // after the user proves they can generate a valid code.
+        totpEnabled: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
+        totpSecret: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
+        totpPendingSecret: {
+            type: DataTypes.STRING(255),
+            allowNull: true
         }
     }, {
         tableName: 'users'
     });
 
     User.associate = (models) => {
-        // LeaveRequest / Notification belong to other members' verticals and
-        // aren't part of this bundle yet — guard so the registry still loads.
-        if (models.LeaveRequest) {
-            User.hasMany(models.LeaveRequest, {
-                foreignKey: "employeeId",
-                onDelete: "cascade"
-            });
-        }
-        if (models.LeaveBalance) {
-            User.hasMany(models.LeaveBalance, {
-                foreignKey: "userId",
-                onDelete: "cascade"
-            });
-        }
-        if (models.Notification) {
-            User.hasMany(models.Notification, {
-                foreignKey: "userId",
-                onDelete: "cascade"
-            });
-        }
+        User.hasMany(models.LeaveRequest, {
+            foreignKey: "employeeId",
+            onDelete: "cascade"
+        });
+        User.hasMany(models.LeaveBalance, {
+            foreignKey: "userId",
+            onDelete: "cascade"
+        });
+        User.hasMany(models.Notification, {
+            foreignKey: "userId",
+            onDelete: "cascade"
+        });
     };
 
     return User;

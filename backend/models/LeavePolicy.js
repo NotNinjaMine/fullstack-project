@@ -1,8 +1,7 @@
 module.exports = (sequelize, DataTypes) => {
-    // Shared reference data: one row per country, drives entitlement bounds
-    // (UC-20) and new-account provisioning. Owned by the leave-request vertical;
-    // stubbed here (minimal) because Member 1's provisioning/entitlement code
-    // depends on it and it wasn't part of this bundle yet — see seed.js.
+    // Per-country statutory leave policy (HLD §5.3 leave_policies).
+    // An employee's country decides BOTH their public-holiday calendar and
+    // the min/max annual leave they can be entitled to under local law.
     const LeavePolicy = sequelize.define("LeavePolicy", {
         country: {
             type: DataTypes.STRING(2),
@@ -10,26 +9,34 @@ module.exports = (sequelize, DataTypes) => {
             unique: true
         },
         countryName: {
-            type: DataTypes.STRING(50),
+            type: DataTypes.STRING(40),
             allowNull: false
         },
         annualMin: {
+            // Statutory minimum annual leave days (company floor)
             type: DataTypes.INTEGER,
             allowNull: false
         },
         annualMax: {
+            // Company ceiling for annual leave in that country
             type: DataTypes.INTEGER,
             allowNull: false
         },
         sickMc: {
+            // Sick leave with medical certificate (days/year)
             type: DataTypes.INTEGER,
-            allowNull: false,
-            defaultValue: 14
+            allowNull: false
         },
         sickNoMc: {
+            // Sick leave without MC (days/year)
+            type: DataTypes.INTEGER,
+            allowNull: false
+        },
+        carryForwardMax: {
+            // Year-end carry-forward cap (5 for all countries per policy)
             type: DataTypes.INTEGER,
             allowNull: false,
-            defaultValue: 60
+            defaultValue: 5
         }
     }, {
         tableName: 'leave_policies'

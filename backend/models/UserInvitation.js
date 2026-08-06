@@ -44,6 +44,13 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.DATE,
             allowNull: true
         },
+        // Set when HR cancels a still-pending invitation. The placeholder INVITED
+        // account is deleted at the same time, so it stops appearing in the staff
+        // directory as "Invited (pending)".
+        cancelledAt: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
         invitedByName: {
             type: DataTypes.STRING(50),
             allowNull: false

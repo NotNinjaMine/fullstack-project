@@ -4,8 +4,16 @@ const { Op } = require('sequelize');
 const { Announcement, AnnouncementAck, User, ConfigAuditLog } = require('../models');
 const yup = require("yup");
 const { validateToken, requireRole } = require('../middlewares/auth');
+const { todaySGT } = require('../services/dateService');
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// BUG FIX: this used to be `new Date().toISOString().slice(0, 10)` — always
+// UTC. Since the server clock is typically UTC but this app's business day is
+// Singapore time, that meant an announcement whose startDate was "today" in
+// Singapore could fail its own `startDate <= today` check for up to 8 hours
+// after midnight SGT (until the server's UTC clock also reached that date) —
+// it would look published, but the banner simply wouldn't appear yet. See
+// services/dateService.js for the full explanation.
+const todayISO = todaySGT;
 
 // Does an announcement target this user?
 const targetsUser = (a, user) => {

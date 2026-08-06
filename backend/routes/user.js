@@ -1,16 +1,43 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
-const { User, LeavePolicy, UserSession, SecurityEvent } = require('../models');
+const {
+    sequelize, User, LeavePolicy, UserSession, SecurityEvent, TwoFactorChallenge,
+    LeaveRequest, LeaveBalance, AuditLog, Comment, Delegation, Notification,
+    AiInteraction, AnnouncementAck, LeaveSwapRequest, ReportSchedule, UserInvitation,
+    ConfigAuditLog
+} = require('../models');
 const yup = require("yup");
 const { sign } = require('jsonwebtoken');
 const { validateToken, requireRole } = require('../middlewares/auth');
 const { createUserWithBalances, initialsOf } = require('../services/provisioning');
-const { sendResetEmail } = require('../services/mailer');
+const { sendResetEmail, smtpConfigured } = require('../services/mailer');
 const session = require('../services/sessionService');
+const twoFactor = require('../services/twoFactorService');
+const totp = require('../services/totpService');
 require('dotenv').config();
+
+// Single definition of the user object exposed to the client and embedded in the
+// JWT, so the plain-login path and the 2FA path can never drift apart.
+const publicUser = (user) => ({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    country: user.country,
+    team: user.team,
+    initials: user.initials,
+    // Included so the client can render in the user's language from the very
+    // first paint. Without it, anything translated that shows BEFORE
+    // /user/profile resolves (e.g. the My account modal title and tab labels)
+    // would flash English and then switch.
+    locale: user.locale
+});
+
+const signFor = (userInfo) =>
+    sign(userInfo, process.env.APP_SECRET, { expiresIn: process.env.TOKEN_EXPIRES_IN });
 
 /* ---------------- shared validation pieces ---------------- */
 
@@ -100,25 +127,34 @@ router.post("/login", async (req, res) => {
         }
 
         // ROLE is inside the signed token, so requireRole can enforce RBAC.
-        let userInfo = {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            role: user.role,
-            country: user.country,
-            team: user.team,
-            initials: user.initials
-        };
-        let accessToken = sign(userInfo, process.env.APP_SECRET,
-            { expiresIn: process.env.TOKEN_EXPIRES_IN });
+        const userInfo = publicUser(user);
 
-        // M1 (UC-25): clear failures, record a session + LOGIN security event.
-        await session.recordSuccessfulLogin(user, accessToken, req);
-
-        res.json({
-            accessToken: accessToken,
-            user: userInfo
-        });
+        // M1 (2FA): EVERY sign-in goes through a second step. The password alone
+        // never yields an access token — we open a challenge and ask HOW they want
+        // to receive the code (email or text). The code is generated only after
+        // that choice, in POST /user/2fa/send.
+        //
+        // This is deliberately unconditional rather than an opt-in setting: with
+        // no per-user enrolment screen there would be nothing able to switch it
+        // on, so an "optional" mode would silently mean nobody is ever challenged.
+        {
+            const pending = await twoFactor.createPendingChallenge(user, req);
+            await session.logEvent(user.id, "TWO_FACTOR_CHALLENGED", req.ip, true);
+            // The password WAS correct, so clear the failed-password counter.
+            user.failedLoginCount = 0;
+            user.lockedUntil = null;
+            await user.save();
+            return res.json({
+                twoFactorRequired: true,
+                stage: "CHOOSE_METHOD",
+                challengeToken: pending.challengeToken,
+                methods: pending.methods,
+                expiresInSeconds: pending.expiresInSeconds,
+                message: "Choose how you'd like to receive your verification code."
+            });
+        }
+        // Unreachable: the block above always returns. A token is only ever
+        // issued by POST /user/2fa/verify.
     }
     catch (err) {
         res.status(400).json({ errors: err.errors });
@@ -133,7 +169,8 @@ router.get("/auth", validateToken, (req, res) => {
         role: req.user.role,
         country: req.user.country,
         team: req.user.team,
-        initials: req.user.initials
+        initials: req.user.initials,
+        locale: req.user.locale
     };
     res.json({
         user: userInfo
@@ -164,24 +201,22 @@ router.post("/forgot-password", async (req, res) => {
         user.resetTokenExpires = new Date(Date.now() + 30 * 60 * 1000);
         await user.save();
 
-        const mail = await sendResetEmail(user.email, token, user.name);
-
-        // A delivery failure is logged server-side but NOT surfaced here: the
-        // response has to stay byte-identical whether or not the address exists,
-        // otherwise this endpoint becomes an account-enumeration oracle.
-        if (!mail.ok && !mail.demo) {
-            console.error(`[forgot-password] reset email to ${user.email} failed: ${mail.error}`);
-        }
+        // Never throws — a mail failure must not break the request (the token is
+        // already saved). The result tells us whether it actually went out.
+        const mail = await sendResetEmail(user.email, token);
 
         // DEMO ONLY: with no SMTP configured there is no email to click, so we
         // return the token to keep the flow demonstrable end-to-end offline.
-        // Once SMTP is configured the token NEVER leaves the server.
-        const demo = mail.demo ? { demoResetToken: token } : {};
+        // When SMTP IS configured the token NEVER leaves the server — not even
+        // if sending failed, otherwise forcing a failure would harvest tokens.
+        const demo = !smtpConfigured() ? { demoResetToken: token } : {};
+        if (smtpConfigured() && !mail.sent) {
+            console.error(`[user] reset email to ${user.email} could not be sent — see [mailer] log above.`);
+        }
         res.json({ message: genericMsg, ...demo });
     }
     catch (err) {
-        if (err.errors) return res.status(400).json({ errors: err.errors });
-        res.status(400).json({ message: err.message || "Could not process that request." });
+        res.status(400).json({ errors: err.errors });
     }
 });
 
@@ -294,7 +329,7 @@ router.post("/employees", validateToken, requireRole("SUPERVISOR", "MANAGER", "H
 router.get("/profile", validateToken, async (req, res) => {
     const user = await User.findByPk(req.user.id, {
         attributes: ["id", "name", "email", "phone", "role", "country", "team",
-            "initials", "locale", "notifyEmail", "notifyInApp"]
+            "initials", "locale", "notifyEmail", "notifyInApp", "totpEnabled"]
     });
     if (!user) return res.sendStatus(404);
     res.json(user);
@@ -304,7 +339,10 @@ router.get("/profile", validateToken, async (req, res) => {
 router.put("/profile", validateToken, async (req, res) => {
     let validationSchema = yup.object({
         name: nameRule.optional(),
-        phone: yup.string().trim().max(30).nullable(),
+        // Same normalisation as registration: accept spaces/dashes, store E.164.
+        phone: yup.string().trim()
+            .transform((v) => (typeof v === "string" ? v.replace(/[\s()-]/g, "") : v))
+            .max(30).nullable(),
         locale: yup.string().oneOf(["en", "zh", "th", "vi", "ms", "id", "ja"]).optional(),
         notifyEmail: yup.boolean().optional(),
         notifyInApp: yup.boolean().optional()
@@ -393,46 +431,361 @@ router.get("/security-log", validateToken, async (req, res) => {
     res.json(list);
 });
 
-/* ---------------- UC-25: HR force-logout & unlock (any user) ---------------- */
-// MANAGER is included here (not just HR_ADMIN) so that if the HR_ADMIN account
-// itself gets locked out, a Manager can still clear it — otherwise a locked HR
-// account would have no path back in at all.
+/* ---------------- UC-25: force-logout & unlock (any user) ---------------- */
 
-// GET /user/locked — accounts currently locked out (for the Manager/HR unlock UI)
+// MANAGER is allowed here (not just HR_ADMIN) as a safety net: if the HR_ADMIN
+// account itself gets locked out, a Manager can still clear it — otherwise a
+// locked HR account would have no way back in.
+
+// GET /user/locked — accounts currently locked out (for the unlock UI)
 router.get("/locked", validateToken, requireRole("MANAGER", "HR_ADMIN"), async (req, res) => {
-    try {
-        const list = await User.findAll({
-            where: { lockedUntil: { [Op.gt]: new Date() } },
-            attributes: ["id", "name", "email", "role", "team", "lockedUntil"]
-        });
-        res.json(list);
-    } catch (err) {
-        console.error(`[user] /locked failed: ${err.message}`);
-        res.status(500).json({ message: "Could not load locked accounts." });
-    }
+    const list = await User.findAll({
+        where: { lockedUntil: { [Op.gt]: new Date() } },
+        attributes: ["id", "name", "email", "role", "team", "lockedUntil"]
+    });
+    res.json(list);
 });
 
 // PUT /user/:id/unlock — clears a lockout
 router.put("/:id/unlock", validateToken, requireRole("MANAGER", "HR_ADMIN"), async (req, res) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.sendStatus(404);
+    const wasAdminLock = user.lockReason === "ADMIN";
     user.failedLoginCount = 0;
     user.lockedUntil = null;
+    user.lockReason = null;
     await user.save();
     await session.logEvent(user.id, "UNLOCKED", req.ip, true);
-    res.json({ message: `${user.name} unlocked.` });
+    res.json({
+        message: `${user.name} unlocked and can sign in again.` +
+            (wasAdminLock ? " They will need to sign in from scratch." : "")
+    });
 });
 
-// PUT /user/:id/force-logout — revokes all of a user's sessions
+// PUT /user/:id/force-logout — revoke every session AND lock the account.
+// Revoking alone would only end the current sessions; the person could sign
+// straight back in. Locking as well means an admin signing someone out actually
+// keeps them out until an admin lets them back in. It uses the same lockedUntil
+// mechanism as the 3-failed-password lockout, so it appears in the same locked
+// list with the same Unlock button — the difference is lockReason=ADMIN, which
+// does not auto-expire.
 router.put("/:id/force-logout", validateToken, requireRole("MANAGER", "HR_ADMIN"), async (req, res) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.sendStatus(404);
+    if (user.id === req.user.id) {
+        return res.status(400).json({ message: "Use Log out to end your own session." });
+    }
+    const [revoked] = await UserSession.update(
+        { revokedAt: new Date() },
+        { where: { userId: user.id, revokedAt: null } }
+    );
+    // Far-future expiry = "until an admin unlocks", using the existing field.
+    user.lockedUntil = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000);
+    user.lockReason = "ADMIN";
+    await user.save();
+    await session.logEvent(user.id, "SESSION_REVOKED", req.ip, true);
+    await session.logEvent(user.id, "LOCKED", req.ip, true);
+    res.json({
+        message: `${revoked} session(s) ended and ${user.name}'s account is locked until you unlock it.`,
+        revoked
+    });
+});
+
+/* ---------------- Account removal (deactivate / reactivate) ---------------- */
+
+// PUT /user/:id/deactivate — remove an employee's access.
+// This is a soft delete on purpose: a hard delete would cascade and destroy that
+// person's leave history, approvals and audit trail, which HR needs to keep.
+// A deactivated account cannot sign in and is rejected on every request.
+router.put("/:id/deactivate", validateToken, requireRole("MANAGER", "HR_ADMIN"), async (req, res) => {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.sendStatus(404);
+    if (user.id === req.user.id) {
+        return res.status(400).json({ message: "You cannot deactivate your own account." });
+    }
+    // Never allow the last active HR admin to be removed — that would leave the
+    // system with nobody able to administer it.
+    if (user.role === "HR_ADMIN") {
+        const remaining = await User.count({
+            where: { role: "HR_ADMIN", status: "ACTIVE", id: { [Op.ne]: user.id } }
+        });
+        if (remaining === 0) {
+            return res.status(400).json({ message: "This is the only active HR admin. Add another before removing this one." });
+        }
+    }
+    user.status = "DEACTIVATED";
+    await user.save();
     const [revoked] = await UserSession.update(
         { revokedAt: new Date() },
         { where: { userId: user.id, revokedAt: null } }
     );
     await session.logEvent(user.id, "SESSION_REVOKED", req.ip, true);
-    res.json({ message: `${revoked} session(s) revoked for ${user.name}.`, revoked });
+    res.json({
+        message: `${user.name} has been removed. Their leave history is kept for records, and ${revoked} active session(s) were ended.`,
+        revoked
+    });
 });
+
+// DELETE /user/:id — PERMANENTLY erase an account and everything attached to it.
+//
+// This is irreversible and destroys leave history, so it is deliberately harder
+// to reach than "Remove": the account must ALREADY be deactivated, which forces
+// a two-step decision (Remove, then Delete permanently). Use it for records
+// created in error or test data — for real departures, "Remove" is correct
+// because it keeps the audit trail.
+//
+// Dependants are cleared explicitly rather than relying on cascade, because only
+// some associations declare onDelete: "cascade" — the rest would either block the
+// delete on a foreign key or leave orphaned rows behind.
+router.delete("/:id", validateToken, requireRole("MANAGER", "HR_ADMIN"), async (req, res) => {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.sendStatus(404);
+    if (user.id === req.user.id) {
+        return res.status(400).json({ message: "You cannot delete your own account." });
+    }
+    if (user.status !== "DEACTIVATED") {
+        return res.status(400).json({ message: "Remove the account first, then it can be permanently deleted." });
+    }
+
+    const name = user.name;
+    const email = user.email;
+    try {
+        await sequelize.transaction(async (t) => {
+            const own = { where: { userId: user.id }, transaction: t };
+
+            // Leave requests + everything hanging off them (audit rows, comments,
+            // swaps) must go before the requests themselves.
+            const requests = await LeaveRequest.findAll({ where: { employeeId: user.id }, transaction: t });
+            const requestIds = requests.map((r) => r.id);
+            if (requestIds.length) {
+                await AuditLog.destroy({ where: { requestId: { [Op.in]: requestIds } }, transaction: t });
+                await Comment.destroy({ where: { requestId: { [Op.in]: requestIds } }, transaction: t });
+                await LeaveSwapRequest.destroy({
+                    where: { [Op.or]: [
+                        { proposerRequestId: { [Op.in]: requestIds } },
+                        { counterpartRequestId: { [Op.in]: requestIds } }
+                    ] }, transaction: t
+                });
+            }
+            await LeaveSwapRequest.destroy({
+                where: { [Op.or]: [{ proposerUserId: user.id }, { counterpartUserId: user.id }] }, transaction: t
+            });
+            await Comment.destroy({ where: { authorId: user.id }, transaction: t });
+            await LeaveRequest.destroy({ where: { employeeId: user.id }, transaction: t });
+
+            // Delegations in either direction.
+            await Delegation.destroy({
+                where: { [Op.or]: [{ fromUserId: user.id }, { toUserId: user.id }] }, transaction: t
+            });
+
+            await ReportSchedule.destroy({ where: { ownerUserId: user.id }, transaction: t });
+            await AnnouncementAck.destroy(own);
+            await AiInteraction.destroy(own);
+            await Notification.destroy(own);
+            await LeaveBalance.destroy(own);
+            await SecurityEvent.destroy(own);
+            await UserSession.destroy(own);
+            await TwoFactorChallenge.destroy(own);
+
+            // Any outstanding invitation for this address is no longer meaningful.
+            await UserInvitation.destroy({ where: { email: user.email }, transaction: t });
+
+            await user.destroy({ transaction: t });
+        });
+    } catch (err) {
+        console.error("[user] permanent delete failed:", err.message);
+        return res.status(400).json({ message: `Could not delete ${name}: ${err.message}` });
+    }
+
+    // Recorded on the non-request-scoped log, which survives the deletion.
+    await ConfigAuditLog.create({
+        actorName: req.user.name,
+        action: `Account permanently deleted: ${name} (${email})`,
+        entity: "users", entityId: String(req.params.id),
+        before: { name, email }, after: null
+    });
+
+    res.json({ message: `${name} and all of their records have been permanently deleted.` });
+});
+
+// PUT /user/:id/reactivate — restore a removed account.
+router.put("/:id/reactivate", validateToken, requireRole("MANAGER", "HR_ADMIN"), async (req, res) => {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.sendStatus(404);
+    if (user.status !== "DEACTIVATED") {
+        return res.status(400).json({ message: `${user.name} is not deactivated.` });
+    }
+    user.status = "ACTIVE";
+    user.failedLoginCount = 0;
+    user.lockedUntil = null;
+    user.lockReason = null;
+    await user.save();
+    res.json({ message: `${user.name} has been restored and can sign in again.` });
+});
+
+/* ================= M1 (2FA): second login step ================= */
+
+// POST /user/2fa/send { challengeToken, method }
+// Called after the user picks EMAIL or SMS on the choice screen. Generates the
+// 6-digit code and delivers it. Can be called again to switch method or resend.
+router.post("/2fa/send", async (req, res) => {
+    let validationSchema = yup.object({
+        challengeToken: yup.string().trim().length(64).matches(/^[0-9a-f]+$/).required(),
+        method: yup.string().oneOf(["EMAIL", "SMS", "AUTHENTICATOR"]).required()
+    });
+    try {
+        const data = await validationSchema.validate(req.body, { abortEarly: false });
+        const result = await twoFactor.sendCodeForChallenge(data.challengeToken, data.method);
+        if (!result.ok) return res.status(result.status || 400).json({ message: result.message });
+        res.json({
+            stage: "ENTER_CODE",
+            method: result.method,
+            destination: result.destination,
+            delivered: result.delivered,
+            deliveryError: result.deliveryError,
+            expiresInSeconds: result.expiresInSeconds,
+            ...(result.demoCode ? { demoCode: result.demoCode } : {}),
+            // AUTHENTICATOR sets its own message (there's nothing "delivered", so
+            // the generic wording below doesn't fit it); EMAIL/SMS don't set one,
+            // so fall back to the generic delivered/not-delivered wording.
+            message: result.message || (result.delivered
+                ? `We sent a 6-digit code ${result.method === "SMS" ? "by text to" : "to"} ${result.destination}.`
+                : `Enter the 6-digit code to continue.`)
+        });
+    } catch (err) {
+        if (err.errors) return res.status(400).json({ errors: err.errors });
+        res.status(400).json({ message: err.message || "Could not send code." });
+    }
+});
+
+// POST /user/2fa/verify { challengeToken, code }
+// Completes the login started by POST /user/login. This is the ONLY place a real
+// access token is issued for a 2FA-enabled account.
+router.post("/2fa/verify", async (req, res) => {
+    let validationSchema = yup.object({
+        challengeToken: yup.string().trim().length(64).matches(/^[0-9a-f]+$/).required(),
+        code: yup.string().trim().matches(/^\d{6}$/, "code must be 6 digits").required()
+    });
+    try {
+        const data = await validationSchema.validate(req.body, { abortEarly: false });
+        const result = await twoFactor.verifyChallenge(data.challengeToken, data.code);
+        if (!result.ok) {
+            // Best-effort audit of the failed step (challenge may already be gone).
+            const ch = await twoFactor.findLiveChallenge(data.challengeToken);
+            if (ch) await session.logEvent(ch.userId, "TWO_FACTOR_FAILED", req.ip, false);
+            return res.status(result.status || 400).json({ message: result.message });
+        }
+
+        const user = result.user;
+        // Re-check account state: it may have changed while the code was in flight.
+        if (user.status === "DEACTIVATED") {
+            return res.status(403).json({ message: "This account has been deactivated. Contact HR." });
+        }
+
+        const userInfo = publicUser(user);
+        const accessToken = signFor(userInfo);
+        await session.recordSuccessfulLogin(user, accessToken, req);
+        await session.logEvent(user.id, "TWO_FACTOR_SUCCESS", req.ip, true);
+
+        res.json({ accessToken, user: userInfo });
+    } catch (err) {
+        if (err.errors) return res.status(400).json({ errors: err.errors });
+        res.status(400).json({ message: err.message || "Verification failed." });
+    }
+});
+
+/* ---------------- 2FA: authenticator-app (TOTP) enrolment ----------------
+ * The "Microsoft Authenticator" option. Enrolment is a one-time, self-service
+ * flow done under My account:
+ *   1. POST /user/2fa/totp/setup  -> server mints a secret, returns a QR code.
+ *   2. user scans it with Microsoft/Google Authenticator, which starts showing
+ *      a rotating 6-digit code.
+ *   3. POST /user/2fa/totp/enable { code } -> proves the app is set up correctly
+ *      before we switch the method on. Only now is the secret trusted.
+ *   4. POST /user/2fa/totp/disable { password } -> turns it back off.
+ * The secret is stored encrypted (see services/totpService) and is never
+ * returned again after setup.
+ */
+
+// STEP 1: mint a fresh secret + QR. Stored as PENDING until confirmed, so an
+// abandoned setup never leaves a half-enrolled account that can't sign in.
+router.post("/2fa/totp/setup", validateToken, async (req, res) => {
+    try {
+        const user = await User.findByPk(req.user.id);
+        if (!user) return res.sendStatus(404);
+
+        const secret = totp.generateSecret();
+        user.totpPendingSecret = totp.encrypt(secret);
+        await user.save();
+
+        const otpauthUrl = totp.keyUri(user.email, secret);
+        const qrDataUrl = await totp.qrDataUrl(otpauthUrl);
+        res.json({
+            // manualKey is the secret to type in by hand if the QR won't scan.
+            manualKey: secret,
+            otpauthUrl,
+            qrDataUrl,
+            issuer: totp.ISSUER,
+            message: "Scan the QR code with your authenticator app, then enter the 6-digit code it shows to finish."
+        });
+    } catch (err) {
+        res.status(400).json({ message: err.message || "Could not start authenticator setup." });
+    }
+});
+
+// STEP 3: confirm the pending secret by verifying one code, then switch on.
+router.post("/2fa/totp/enable", validateToken, async (req, res) => {
+    const validationSchema = yup.object({
+        code: yup.string().trim().matches(/^\d{6}$/, "code must be 6 digits").required()
+    });
+    try {
+        const data = await validationSchema.validate(req.body, { abortEarly: false });
+        const user = await User.findByPk(req.user.id);
+        if (!user) return res.sendStatus(404);
+        if (!user.totpPendingSecret) {
+            return res.status(400).json({ message: "Start setup first — no pending authenticator secret." });
+        }
+        const secret = totp.decrypt(user.totpPendingSecret);
+        if (!totp.verify(data.code, secret)) {
+            return res.status(400).json({ message: "That code isn't right. Make sure your phone's time is automatic, then try the current code." });
+        }
+        // Promote pending -> active.
+        user.totpSecret = user.totpPendingSecret;
+        user.totpPendingSecret = null;
+        user.totpEnabled = true;
+        await user.save();
+        await session.logEvent(user.id, "TWO_FACTOR_ENABLED", req.ip, true);
+        res.json({ message: "Authenticator app enabled. You can now use it to verify sign-ins.", totpEnabled: true });
+    } catch (err) {
+        if (err.errors) return res.status(400).json({ errors: err.errors });
+        res.status(400).json({ message: err.message || "Could not enable authenticator." });
+    }
+});
+
+// STEP 4: turn it off. Requires the current password so a walk-up attacker on an
+// open session can't quietly strip a security factor.
+router.post("/2fa/totp/disable", validateToken, async (req, res) => {
+    const validationSchema = yup.object({
+        password: yup.string().trim().min(8).max(50).required()
+    });
+    try {
+        const data = await validationSchema.validate(req.body, { abortEarly: false });
+        const user = await User.findByPk(req.user.id);
+        if (!user) return res.sendStatus(404);
+        const ok = await bcrypt.compare(data.password, user.password);
+        if (!ok) return res.status(400).json({ message: "Password is incorrect." });
+
+        user.totpEnabled = false;
+        user.totpSecret = null;
+        user.totpPendingSecret = null;
+        await user.save();
+        await session.logEvent(user.id, "TWO_FACTOR_DISABLED", req.ip, true);
+        res.json({ message: "Authenticator app turned off. You'll verify sign-ins by email or text.", totpEnabled: false });
+    } catch (err) {
+        if (err.errors) return res.status(400).json({ errors: err.errors });
+        res.status(400).json({ message: err.message || "Could not disable authenticator." });
+    }
+});
+
 
 module.exports = router;

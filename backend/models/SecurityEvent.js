@@ -5,7 +5,10 @@ module.exports = (sequelize, DataTypes) => {
     const SecurityEvent = sequelize.define("SecurityEvent", {
         eventType: {
             type: DataTypes.ENUM(
-                "LOGIN", "LOGOUT", "FAILED_LOGIN", "PASSWORD_CHANGE", "SESSION_REVOKED", "LOCKED", "UNLOCKED"
+                "LOGIN", "LOGOUT", "FAILED_LOGIN", "PASSWORD_CHANGE", "SESSION_REVOKED", "LOCKED", "UNLOCKED",
+                // M1 (2FA): second-step login events
+                "TWO_FACTOR_CHALLENGED", "TWO_FACTOR_SUCCESS", "TWO_FACTOR_FAILED",
+                "TWO_FACTOR_ENABLED", "TWO_FACTOR_DISABLED", "TWO_FACTOR_RESET"
             ),
             allowNull: false
         },

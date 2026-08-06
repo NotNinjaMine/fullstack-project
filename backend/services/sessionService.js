@@ -21,6 +21,7 @@ const recordFailedLogin = async (user, ip) => {
     user.failedLoginCount = Number(user.failedLoginCount || 0) + 1;
     if (user.failedLoginCount >= LOCK_THRESHOLD) {
         user.lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60 * 1000);
+        user.lockReason = "FAILED_LOGINS";
         await user.save();
         await logEvent(user.id, "FAILED_LOGIN", ip, false);
         await logEvent(user.id, "LOCKED", ip, false);
@@ -35,6 +36,7 @@ const recordFailedLogin = async (user, ip) => {
 const recordSuccessfulLogin = async (user, token, req) => {
     user.failedLoginCount = 0;
     user.lockedUntil = null;
+    user.lockReason = null;
     await user.save();
 
     const deviceInfo = (req.headers["user-agent"] || "Unknown device").slice(0, 200);

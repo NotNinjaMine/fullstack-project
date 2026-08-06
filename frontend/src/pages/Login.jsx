@@ -1,5 +1,13 @@
 import { useState, useEffect } from "react";
 import http from "../lib/http";
+import { Mail, MessageSquare, KeyRound } from "lucide-react";
+
+// Icon shown next to each 2FA delivery choice.
+const methodIcon = (method) => {
+  if (method === "SMS") return MessageSquare;
+  if (method === "AUTHENTICATOR") return KeyRound;
+  return Mail;
+};
 
 const DEMO = [
   { e: "weiling@innovare.com", label: "Wei Ling · Employee (SG)" },
@@ -15,13 +23,13 @@ const DEMO = [
 
 const inputCls = "lf-input";
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, notice = "" }) {
   // mode: "login" | "forgot" | "reset"
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
+  const [info, setInfo] = useState(notice || "");
   const [busy, setBusy] = useState(false);
 
   // reset form state
@@ -29,32 +37,33 @@ export default function Login({ onLogin }) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // M1 (UC-24) invite/onboarding state
-  const [inviteToken, setInviteToken] = useState("");
-  const [invitee, setInvitee] = useState(null); // { email, name, country, team, role }
-  const [inviteLocale, setInviteLocale] = useState("en");
+  // M1 (2FA): state for the second sign-in step. `challenge` holds the opaque
+  // challenge returned by /user/login (token + available delivery methods);
+  // `code` is the 6-digit code the user types; `resendIn` is the cooldown
+  // (seconds) before another code can be sent. EVERY sign-in — demo accounts
+  // included — goes through this step, so if these aren't declared the very
+  // first setChallenge() call throws and login stops working for everyone.
+  const [challenge, setChallenge] = useState(null);
+  const [code, setCode] = useState("");
+  const [resendIn, setResendIn] = useState(0);
 
-  // Arriving from an email link: /?resetToken=... opens the reset form directly.
+  // Tick the resend cooldown down to zero, one second at a time.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get("resetToken");
-    const inv = params.get("inviteToken");
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  // Arriving from a password-reset email: /?resetToken=... opens the reset form.
+  // Invitation links (?inviteToken=...) are handled by App.jsx, which shows the
+  // standalone Register page instead — a new joiner has no account to sign in with.
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("resetToken");
+    const t = raw ? raw.replace(/\s+/g, "") : null;
     if (t) {
       setResetToken(t);
       setMode("reset");
       window.history.replaceState({}, "", "/");
-    } else if (inv) {
-      setInviteToken(inv);
-      window.history.replaceState({}, "", "/");
-      http
-        .get(`/invitation/verify?token=${encodeURIComponent(inv)}`)
-        .then((res) => {
-          setInvitee(res.data);
-          setMode("invite");
-        })
-        .catch((err) => {
-          setError(err.response?.data?.message || "This invitation link is invalid or has expired.");
-        });
     }
   }, []);
 
@@ -70,6 +79,22 @@ export default function Login({ onLogin }) {
     http
       .post("/user/login", { email, password })
       .then((res) => {
+        // M1 (2FA): password accepted, but no access token yet. We hold an opaque
+        // challenge token and first ask HOW they want to receive the code.
+        if (res.data.twoFactorRequired) {
+          setChallenge({
+            token: res.data.challengeToken,
+            methods: res.data.methods || [],
+            method: null,
+            destination: null,
+            demoCode: null,
+          });
+          setCode("");
+          setMode("twofa-choose");
+          setInfo("");
+          setBusy(false);
+          return;
+        }
         localStorage.setItem("accessToken", res.data.accessToken);
         onLogin(res.data.user);
       })
@@ -77,6 +102,61 @@ export default function Login({ onLogin }) {
         setError(err.response?.data?.message || "Login failed.");
         setBusy(false);
       });
+  };
+
+  // M1 (2FA): the user picked email or text — send the code, then show code entry.
+  const chooseMethod = (method) => {
+    setBusy(true);
+    setError("");
+    http
+      .post("/user/2fa/send", { challengeToken: challenge.token, method })
+      .then((res) => {
+        setChallenge((c) => ({
+          ...c,
+          method: res.data.method,
+          destination: res.data.destination,
+          delivered: res.data.delivered,
+          deliveryError: res.data.deliveryError,
+          demoCode: res.data.demoCode || null,
+        }));
+        setCode("");
+        setResendIn(30);
+        setMode("twofa");
+        setInfo(res.data.message || "");
+      })
+      .catch((err) => setError(err.response?.data?.message || "Could not send the code."))
+      .finally(() => setBusy(false));
+  };
+
+  // M1 (2FA): submit the emailed/texted code to finish signing in.
+  const verifyCode = () => {
+    setBusy(true);
+    setError("");
+    http
+      .post("/user/2fa/verify", { challengeToken: challenge.token, code: code.trim() })
+      .then((res) => {
+        localStorage.setItem("accessToken", res.data.accessToken);
+        onLogin(res.data.user);
+      })
+      .catch((err) => {
+        setError(err.response?.data?.message || (err.response?.data?.errors || []).join("; ") || "Verification failed.");
+        setBusy(false);
+      });
+  };
+
+  const resendCode = () => {
+    setBusy(true);
+    setError("");
+    http
+      .post("/user/2fa/send", { challengeToken: challenge.token, method: challenge.method })
+      .then((res) => {
+        setInfo(res.data.message || "A new code was sent.");
+        setChallenge((c) => ({ ...c, demoCode: res.data.demoCode || null, delivered: res.data.delivered }));
+        setCode("");
+        setResendIn(30);
+      })
+      .catch((err) => setError(err.response?.data?.message || "Could not resend."))
+      .finally(() => setBusy(false));
   };
 
   const requestReset = () => {
@@ -124,34 +204,6 @@ export default function Login({ onLogin }) {
       })
       .catch((err) =>
         setError(err.response?.data?.message || (err.response?.data?.errors || []).join("; ") || "Reset failed.")
-      )
-      .finally(() => setBusy(false));
-  };
-
-  // M1 (UC-24): new employee sets a password + preferences to activate the account.
-  const submitInvite = () => {
-    if (newPassword !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    http
-      .post("/invitation/accept", {
-        token: inviteToken.trim(),
-        password: newPassword,
-        locale: inviteLocale,
-      })
-      .then((res) => {
-        setNewPassword("");
-        setConfirmPassword("");
-        setInviteToken("");
-        setInvitee(null);
-        switchMode("login");
-        setInfo(res.data.message + " You can now sign in with your email and new password.");
-      })
-      .catch((err) =>
-        setError(err.response?.data?.message || (err.response?.data?.errors || []).join("; ") || "Activation failed.")
       )
       .finally(() => setBusy(false));
   };
@@ -243,7 +295,173 @@ export default function Login({ onLogin }) {
             </>
           )}
 
-          {/* ---------------- FORGOT PASSWORD ---------------- */}
+          {/* ---------------- 2FA: CHOOSE DELIVERY METHOD ---------------- */}
+          {mode === "twofa-choose" && challenge && (
+            <>
+              <h2 className="font-semibold mb-1">Verify it's you</h2>
+              <p className="text-sm text-slate-500 mb-4">
+                Your password was accepted. For extra security, choose how you'd like
+                to receive your 6-digit verification code.
+              </p>
+
+              <div className="space-y-2 mb-4">
+                {challenge.methods.map((m) => {
+                  const Icon = methodIcon(m.method);
+                  const title =
+                    m.method === "EMAIL"
+                      ? "Email me a code"
+                      : m.method === "SMS"
+                      ? "Text me a code"
+                      : "Use my authenticator app";
+                  return (
+                    <button
+                      key={m.method}
+                      onClick={() => m.available && chooseMethod(m.method)}
+                      disabled={busy || !m.available}
+                      className={`w-full text-left rounded-xl border px-4 py-3 transition ${
+                        m.available
+                          ? "border-slate-200 hover:border-teal-500 hover:bg-teal-50 cursor-pointer"
+                          : "border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <span
+                          className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
+                            m.available ? "bg-teal-100 text-teal-700" : "bg-slate-200 text-slate-400"
+                          }`}
+                        >
+                          <Icon className="w-4 h-4" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-medium text-slate-800">{title}</span>
+                          <span className="block text-xs text-slate-500 truncate">
+                            {m.available ? m.destination : m.reason}
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {error && (
+                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2.5 mb-4">
+                  {error}
+                </p>
+              )}
+              {busy && <p className="text-sm text-slate-500 mb-2">Sending your code…</p>}
+
+              <button
+                onClick={() => {
+                  setChallenge(null);
+                  setPassword("");
+                  switchMode("login");
+                }}
+                className="w-full text-sm text-slate-500 hover:text-slate-700 py-2"
+              >
+                ← Back to sign in
+              </button>
+            </>
+          )}
+
+          {/* ---------------- 2FA: ENTER THE CODE ---------------- */}
+          {mode === "twofa" && challenge && (
+            <>
+              <h2 className="font-semibold mb-1">Verify it's you</h2>
+              <p className="text-sm text-slate-500 mb-4">
+                {challenge.method === "AUTHENTICATOR"
+                  ? "Open your authenticator app (e.g. Microsoft Authenticator) and enter the current 6-digit code for Innovare LMS."
+                  : challenge.method === "SMS"
+                  ? `We sent a 6-digit code by text to ${challenge.destination}. It expires in 10 minutes.`
+                  : `We sent a 6-digit code to ${challenge.destination}. It expires in 10 minutes.`}
+              </p>
+
+              {/* Demo affordance: with no email/SMS transport configured, or for a
+                  demo authenticator account with no real device enrolled, the code
+                  is shown here to keep the flow usable. */}
+              {challenge.demoCode && (
+                <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-4">
+                  <p className="text-amber-900 font-medium">
+                    Demo mode — your code is{" "}
+                    <span className="font-mono text-base tracking-widest">{challenge.demoCode}</span>
+                  </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    {challenge.method === "SMS"
+                      ? "No SMS provider is configured, so the code is shown here instead of being texted."
+                      : challenge.method === "AUTHENTICATOR"
+                      ? "This is a demo account with no real authenticator app enrolled, so the code is shown here instead."
+                      : "No email server is configured, so the code is shown here instead of being emailed."}
+                  </p>
+                </div>
+              )}
+              {!challenge.demoCode && challenge.deliveryError && (
+                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2.5 mb-4">
+                  We couldn't deliver the code: {challenge.deliveryError}
+                </p>
+              )}
+
+              <label className="block mb-4">
+                <span className="text-sm text-slate-600">6-digit code</span>
+                <input
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={(e) => e.key === "Enter" && code.length === 6 && verifyCode()}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  placeholder="000000"
+                  className={`${inputCls} text-center text-2xl tracking-[0.4em] font-mono`}
+                />
+              </label>
+
+              {info && (
+                <p className="text-sm text-teal-700 bg-teal-50 border border-teal-200 rounded-lg p-2.5 mb-4">
+                  {info}
+                </p>
+              )}
+              {error && (
+                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2.5 mb-4">
+                  {error}
+                </p>
+              )}
+
+              <button
+                onClick={verifyCode}
+                disabled={busy || code.length !== 6}
+                className="lf-btn lf-btn-primary w-full py-2.5"
+              >
+                {busy ? "Verifying…" : "Verify and sign in"}
+              </button>
+
+              <div className="flex items-center justify-between mt-2">
+                {challenge.method === "AUTHENTICATOR" ? (
+                  <span className="text-xs text-slate-400 py-2">
+                    The code refreshes in your app every 30 seconds.
+                  </span>
+                ) : (
+                  <button
+                    onClick={resendCode}
+                    disabled={busy || resendIn > 0}
+                    className="text-sm text-slate-500 hover:text-slate-700 py-2 disabled:opacity-50"
+                  >
+                    {resendIn > 0 ? `Resend code (${resendIn}s)` : "Resend code"}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setCode("");
+                    setError("");
+                    setInfo("");
+                    setMode("twofa-choose");
+                  }}
+                  className="text-sm text-slate-500 hover:text-slate-700 py-2"
+                >
+                  ← Use a different method
+                </button>
+              </div>
+            </>
+          )}
+
           {mode === "forgot" && (
             <>
               <h2 className="font-semibold mb-1">Reset your password</h2>
@@ -353,82 +571,6 @@ export default function Login({ onLogin }) {
                 className="lf-btn lf-btn-primary w-full py-2.5"
               >
                 {busy ? "Updating…" : "Update password"}
-              </button>
-              <button
-                onClick={() => switchMode("login")}
-                className="w-full mt-2 text-sm text-slate-500 hover:text-slate-700 py-2"
-              >
-                ← Back to sign in
-              </button>
-            </>
-          )}
-
-          {/* ---------------- ACCEPT INVITATION (UC-24) ---------------- */}
-          {mode === "invite" && (
-            <>
-              <h2 className="font-semibold mb-1">Welcome to Innovare{invitee?.name ? `, ${invitee.name.split(" ")[0]}` : ""}</h2>
-              <p className="text-sm text-slate-500 mb-4">
-                Set a password to activate your account, then sign in.
-              </p>
-
-              {invitee && (
-                <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
-                  <p><span className="text-slate-400">Email:</span> {invitee.email}</p>
-                  <p><span className="text-slate-400">Role:</span> {invitee.role} · {invitee.country} · {invitee.team}</p>
-                </div>
-              )}
-
-              <label className="block mb-3">
-                <span className="text-sm text-slate-600">New password</span>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  autoComplete="new-password"
-                  className={inputCls}
-                />
-                <span className="text-xs text-slate-400">Min 8 characters, at least 1 letter and 1 number.</span>
-              </label>
-              <label className="block mb-3">
-                <span className="text-sm text-slate-600">Confirm password</span>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && submitInvite()}
-                  autoComplete="new-password"
-                  className={inputCls}
-                />
-              </label>
-              <label className="block mb-4">
-                <span className="text-sm text-slate-600">Preferred language</span>
-                <select
-                  value={inviteLocale}
-                  onChange={(e) => setInviteLocale(e.target.value)}
-                  className={inputCls}
-                >
-                  <option value="en">English</option>
-                  <option value="zh">中文</option>
-                  <option value="th">ไทย</option>
-                  <option value="vi">Tiếng Việt</option>
-                  <option value="ms">Bahasa Melayu</option>
-                  <option value="id">Bahasa Indonesia</option>
-                  <option value="ja">日本語</option>
-                </select>
-              </label>
-
-              {error && (
-                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2.5 mb-4">
-                  {error}
-                </p>
-              )}
-
-              <button
-                onClick={submitInvite}
-                disabled={busy || !newPassword || !confirmPassword}
-                className="lf-btn lf-btn-primary w-full py-2.5"
-              >
-                {busy ? "Activating…" : "Activate my account"}
               </button>
               <button
                 onClick={() => switchMode("login")}

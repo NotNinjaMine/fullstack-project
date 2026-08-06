@@ -85,7 +85,21 @@
       "Bash(curl -s -m 10 -X POST http://localhost:3001/user/login -H 'Content-Type: application/json' -d '{\"email\":\"brokensmtp@innovare.com\",\"password\":\"fallback123\"}')",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\(j.accessToken?'OK logged in as '+j.user.name+' \\('+j.user.role+'\\)':j.message\\)}\\)\")",
       "Bash(awk '/^router\\\\./{name=$0; guarded=\"NO\"} /try \\\\{/{if\\(name\\)guarded=\"YES\"} /^}\\\\\\);/{if\\(name\\){print \\(guarded==\"YES\"?\"  guarded  \":\"UNGUARDED \"\\) substr\\(name,1,60\\); name=\"\"}}' routes/admin.js)",
-      "Bash(sed -n '/user\\\\/locked/,/^}\\);/p' routes/user.js)"
+      "Bash(sed -n '/user\\\\/locked/,/^}\\);/p' routes/user.js)",
+      "Bash(node -e \"require\\('./models'\\)\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(node /tmp/claude-1000/-workspaces-fullstack-project/02bd0e86-25d1-460f-857f-3b73d46587ae/scratchpad/mfa_test.mjs)",
+      "Bash(npm root *)",
+      "Bash(NODE_PATH=$\\(npm root -g \\) node --experimental-vm-modules /tmp/claude-1000/-workspaces-fullstack-project/02bd0e86-25d1-460f-857f-3b73d46587ae/scratchpad/mfa_test.mjs)",
+      "Bash(node mfa_test.mjs)",
+      "Bash(node mfa_wrong_test.mjs)",
+      "Bash(lsof -ti:3000 -sTCP:LISTEN)",
+      "Bash(xargs -r kill)",
+      "Bash(lsof -ti:3001 -sTCP:LISTEN)",
+      "Bash(node -c routes/admin.js)",
+      "Bash(node -c routes/user.js)",
+      "Bash(curl -s -X POST http://localhost:3001/user/login -H \"Content-Type: application/json\" -d '{\"email\":\"priya@innovare.com\",\"password\":\"wrongpass1\"}')",
+      "Bash(node manager_locked_test.mjs)"
     ],
     "additionalDirectories": [
       "/tmp"

@@ -2,8 +2,9 @@
 // entitlement always follows the employee's COUNTRY policy (leave_policies).
 // Used by /user/register, the Supervisor/Manager "add employee" endpoint,
 // and the seeder — one source of truth, no drift.
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const { User, LeaveBalance, LeavePolicy } = require('../models');
+const { currentLeaveYear } = require('./leaveYearService');
 
 const initialsOf = (name) =>
     name.split(" ").map(w => w[0]).join("").slice(0, 3).toUpperCase();
@@ -21,10 +22,14 @@ const resolveEntitlement = (policy, requested) => {
 /**
  * Create a user + their annual/sick balances for `year` per their country policy.
  * @param {object} data  { name, email, password (plain), role, country, team, annualEntitlement?, carried? }
+ * @param {number} [year] Defaults to the active leave year (see leaveYearService) —
+ *   so a new hire added after a year-end rollover gets THIS system's current
+ *   year, not a stale one nobody's balance uses anymore.
  * @returns {{ user, policy, balances }}
  * @throws  Error with .status if the country has no policy configured
  */
-const createUserWithBalances = async (data, year = new Date().getFullYear()) => {
+const createUserWithBalances = async (data, year = null) => {
+    const activeYear = year || await currentLeaveYear();
     const country = (data.country || "SG").toUpperCase();
     const policy = await LeavePolicy.findOne({ where: { country } });
     if (!policy) {
@@ -45,9 +50,9 @@ const createUserWithBalances = async (data, year = new Date().getFullYear()) => 
 
     const entitled = resolveEntitlement(policy, data.annualEntitlement);
     const balances = await Promise.all([
-        LeaveBalance.create({ userId: user.id, leaveType: "annual", year, entitled, carried: Number(data.carried) || 0, used: 0 }),
-        LeaveBalance.create({ userId: user.id, leaveType: "sick_mc", year, entitled: policy.sickMc, carried: 0, used: 0 }),
-        LeaveBalance.create({ userId: user.id, leaveType: "sick_nomc", year, entitled: policy.sickNoMc, carried: 0, used: 0 })
+        LeaveBalance.create({ userId: user.id, leaveType: "annual", year: activeYear, entitled, carried: Number(data.carried) || 0, used: 0 }),
+        LeaveBalance.create({ userId: user.id, leaveType: "sick_mc", year: activeYear, entitled: policy.sickMc, carried: 0, used: 0 }),
+        LeaveBalance.create({ userId: user.id, leaveType: "sick_nomc", year: activeYear, entitled: policy.sickNoMc, carried: 0, used: 0 })
     ]);
 
     return { user, policy, balances };

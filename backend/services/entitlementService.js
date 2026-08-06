@@ -8,8 +8,8 @@ const { User, LeaveBalance, LeavePolicy, ConfigAuditLog } = require('../models')
 const prorateEntitlement = (fullEntitlement, startISO, year = new Date().getFullYear()) => {
     const start = new Date(startISO);
     if (isNaN(start.getTime())) return fullEntitlement;
-    if (start.getFullYear() < year) return fullEntitlement;   // joined before the year — full
-    if (start.getFullYear() > year) return 0;                 // joins next year — none this year
+    if (start.getFullYear() < year) return fullEntitlement;   // joined before the year → full
+    if (start.getFullYear() > year) return 0;                 // joins next year → none this year
 
     const startMonth = start.getMonth();     // 0-11
     let monthsRemaining = 12 - startMonth;   // includes the joining month
@@ -33,15 +33,27 @@ const previewBulkEntitlement = async (year) => {
             where: { userId: user.id, leaveType: "annual", year }
         });
         const target = policy.annualMin;
+        const current = existing ? Number(existing.entitled) : null;
+        // A current entitlement BELOW the statutory figure is the signature of a
+        // mid-year joiner whose allowance was pro-rated on onboarding (UC-24).
+        // Committing would raise them to the full year's entitlement, silently
+        // undoing that pro-ration — correct at the start of a NEW year, wrong if
+        // run mid-year. Flag it so HR decides knowingly rather than by accident.
+        const raisesProrated = current !== null && current < target;
         rows.push({
             userId: user.id,
             name: user.name,
             country: user.country,
-            currentEntitled: existing ? Number(existing.entitled) : null,
-            targetEntitled: target
+            currentEntitled: current,
+            targetEntitled: target,
+            raisesProrated
         });
     }
-    return { year, rows };
+    return {
+        year,
+        rows,
+        proratedCount: rows.filter((r) => r.raisesProrated).length
+    };
 };
 
 // Commit the bulk entitlement update (annual = country statutory minimum).

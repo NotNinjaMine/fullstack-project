@@ -2,12 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────
    Design tokens
    Primary accent stays teal (current liked look).
    Neutrals lean slate for a calmer, more premium base.
    Semantic colors only for status meaning.
-   ──────────────────────────────────────────────────────────── */
+   ───────────────────────────────────────────────────────────── */
 :root {
   /* Surfaces */
   --lf-surface: #ffffff;
@@ -73,7 +73,7 @@
 }
 
 @layer components {
-  /* ── Cards: subtle lift on hover ──────────────────────────── */
+  /* ── Cards: subtle lift on hover ─────────────────────────── */
   .lf-card {
     background: var(--lf-surface);
     border-radius: 0.75rem; /* rounded-xl */
@@ -118,7 +118,7 @@
     border-color: var(--lf-border);
   }
 
-  /* ── Buttons: shared base states ──────────────────────────── */
+  /* ── Buttons: shared base states ─────────────────────────── */
   .lf-btn {
     display: inline-flex;
     align-items: center;

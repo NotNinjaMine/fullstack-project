@@ -1,10 +1,7 @@
 module.exports = (sequelize, DataTypes) => {
-    // Shared reference data: per-user, per-year balance for a leave type.
-    // Owned by the leave-request vertical; stubbed here (minimal) because
-    // Member 1's provisioning/entitlement code depends on it — see seed.js.
     const LeaveBalance = sequelize.define("LeaveBalance", {
         leaveType: {
-            type: DataTypes.STRING(20),
+            type: DataTypes.ENUM("annual", "sick_mc", "sick_nomc"),
             allowNull: false
         },
         year: {
@@ -12,17 +9,18 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false
         },
         entitled: {
-            type: DataTypes.DECIMAL(5, 1),
+            type: DataTypes.DECIMAL(4, 1),
             allowNull: false,
             defaultValue: 0
         },
         carried: {
-            type: DataTypes.DECIMAL(5, 1),
+            // Year-end cron caps carry-forward at 5 days (SGT 31 Dec 23:59)
+            type: DataTypes.DECIMAL(4, 1),
             allowNull: false,
             defaultValue: 0
         },
         used: {
-            type: DataTypes.DECIMAL(5, 1),
+            type: DataTypes.DECIMAL(4, 1),
             allowNull: false,
             defaultValue: 0
         }
@@ -31,7 +29,9 @@ module.exports = (sequelize, DataTypes) => {
     });
 
     LeaveBalance.associate = (models) => {
-        LeaveBalance.belongsTo(models.User, { foreignKey: "userId", onDelete: "cascade" });
+        LeaveBalance.belongsTo(models.User, {
+            foreignKey: "userId"
+        });
     };
 
     return LeaveBalance;

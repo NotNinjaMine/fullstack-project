@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import http from "../lib/http";
+import Modal from "./Modal";
 import { Megaphone, X } from "lucide-react";
 
 // M1 (UC-26): polls /announcement/active and shows banners. A requiresAck
@@ -17,6 +18,10 @@ export default function AnnouncementBanner() {
 
   useEffect(() => {
     load();
+    // Re-check periodically so a freshly published announcement appears without
+    // requiring the user to reload the page.
+    const id = setInterval(load, 60 * 1000);
+    return () => clearInterval(id);
   }, [load]);
 
   const ack = (id) => {
@@ -33,27 +38,30 @@ export default function AnnouncementBanner() {
 
   return (
     <>
-      {/* Mandatory: blocking modal */}
+      {/* Mandatory: blocking, centred modal — cannot be dismissed without acknowledging */}
       {mandatory && (
-        <div className="lf-modal-overlay">
-          <div className="lf-modal-panel max-w-lg">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center flex-shrink-0">
-                <Megaphone className="w-5 h-5" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-lf-text">{mandatory.title}</h3>
-                <p className="text-xs text-lf-text-subtle mb-3">From {mandatory.createdByName}</p>
-                <p className="text-sm text-lf-text-muted whitespace-pre-line">{mandatory.body}</p>
-              </div>
+        <Modal
+          title={mandatory.title}
+          size="md"
+          dismissable={false}
+          footer={
+            <button type="button" onClick={() => ack(mandatory.id)} className="lf-btn lf-btn-primary">
+              I acknowledge
+            </button>
+          }
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center flex-shrink-0">
+              <Megaphone className="w-5 h-5" />
             </div>
-            <div className="mt-5 flex justify-end">
-              <button type="button" onClick={() => ack(mandatory.id)} className="lf-btn lf-btn-primary">
-                I acknowledge
-              </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-lf-text-subtle mb-2">
+                From {mandatory.createdByName} · {mandatory.startDate} → {mandatory.endDate}
+              </p>
+              <p className="text-sm text-lf-text-muted whitespace-pre-line">{mandatory.body}</p>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Optional: dismissible banners */}

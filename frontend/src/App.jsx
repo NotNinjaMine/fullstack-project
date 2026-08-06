@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import http from "./lib/http";
 import Login from "./pages/Login";
-import Employee from "./pages/Employee";
+import Register from "./pages/Register";
+import EmployeeView from "./pages/EmployeeView";
 import Approver from "./pages/Approver";
 import Admin from "./pages/Admin";
 import AnnouncementBanner from "./components/AnnouncementBanner";
@@ -12,9 +13,39 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
+  // M1 (UC-24): an invitation link (?inviteToken=...) opens the standalone
+  // account-creation page rather than the sign-in card, because the person
+  // arriving has no account to sign in with yet. Read once on mount and the
+  // token is removed from the address bar so it isn't left in history.
+  const [inviteToken, setInviteToken] = useState(() => {
+    const raw = new URLSearchParams(window.location.search).get("inviteToken");
+    return raw ? raw.replace(/\s+/g, "") : null;
+  });
+  const [signInNotice, setSignInNotice] = useState("");
+  // M1: Supervisors/Managers/HR Admins can also apply for leave for
+  // themselves, using the same page an Employee sees. "role" shows their
+  // normal role page (Approver/Admin); "employee" shows the Employee page
+  // instead, without changing who they actually are or what the server
+  // enforces per-request. An EMPLOYEE has nothing to switch to, so this is
+  // simply unused for that role.
+  const [viewMode, setViewMode] = useState("role");
 
-  // Restore session from stored JWT (lab5 /user/auth pattern)
+  // Restore session from stored JWT (lab5 /user/auth pattern).
+  //
+  // An invitation link is for creating a BRAND-NEW account, so it must never
+  // drop the visitor into someone else's dashboard. If a demo session is still
+  // stored from earlier, clear it and stay signed out: this makes the invite
+  // link open the Register page straight away, and it means finishing
+  // registration lands on the sign-in screen (ready for the new credentials)
+  // rather than the old account's dashboard. Demo accounts stay reachable from
+  // the sign-in page's demo buttons as usual.
   useEffect(() => {
+    if (inviteToken) {
+      localStorage.clear();
+      setUser(null);
+      setLoading(false);
+      return;
+    }
     if (localStorage.getItem("accessToken")) {
       http
         .get("/user/auth")
@@ -24,7 +55,7 @@ export default function App() {
     } else {
       setLoading(false);
     }
-  }, []);
+  }, [inviteToken]);
 
   useEffect(() => {
     if (!toast) return;
@@ -35,6 +66,7 @@ export default function App() {
   const logout = () => {
     localStorage.clear();
     setUser(null);
+    setViewMode("role");
   };
 
   if (loading) {
@@ -45,9 +77,29 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return <Login onLogin={setUser} />;
+  // Account creation from an invitation — its own page, before any sign-in.
+  if (!user && inviteToken) {
+    return (
+      <Register
+        token={inviteToken}
+        onDone={(message) => {
+          setInviteToken(null);
+          window.history.replaceState({}, "", "/");
+          if (message) setSignInNotice(message);
+        }}
+      />
+    );
   }
+
+  if (!user) {
+    return <Login onLogin={setUser} notice={signInNotice} />;
+  }
+
+  const roleHomeLabel = (role) =>
+    role === "SUPERVISOR" ? "Supervisor Approvals"
+    : role === "MANAGER" ? "Manager Approvals"
+    : role === "HR_ADMIN" ? "HR Administration"
+    : "Employee Dashboard";
 
   return (
     <div className="min-h-screen lf-page">
@@ -58,15 +110,22 @@ export default function App() {
               Innovare Management · Leave Management System
             </p>
             <h1 className="text-xl font-semibold">
-              {user.role === "EMPLOYEE"
-                ? "Employee Dashboard"
-                : user.role === "SUPERVISOR"
-                ? "Supervisor Approvals"
-                : user.role === "MANAGER"
-                ? "Manager Approvals"
-                : "HR Administration"}
+              {viewMode === "employee" ? "Employee Dashboard" : roleHomeLabel(user.role)}
             </h1>
           </div>
+
+          {/* M1: only roles with somewhere ELSE to go get this — an Employee's
+              own page already IS the "apply for leave" page. */}
+          {user.role !== "EMPLOYEE" && (
+            <button
+              type="button"
+              onClick={() => setViewMode((v) => (v === "employee" ? "role" : "employee"))}
+              className="lf-btn lf-btn-sm text-sm bg-teal-700 text-white hover:bg-teal-600 border-transparent focus-visible:ring-offset-teal-900"
+            >
+              {viewMode === "employee" ? `← Back to ${roleHomeLabel(user.role)}` : "Apply for leave"}
+            </button>
+          )}
+
           <div className="flex items-center gap-3">
             <div className="text-right">
               <p className="font-medium leading-tight">{user.name}</p>
@@ -111,10 +170,15 @@ export default function App() {
         />
       )}
 
-      {/* Role decides the ONLY page this account can see. The server
-          enforces the same rule again on every API call (requireRole). */}
-      {user.role === "EMPLOYEE" ? (
-        <Employee user={user} setToast={setToast} />
+      {/* Role decides the DEFAULT page this account sees. The server enforces
+          the same rule again on every API call (requireRole) — switching to
+          "Apply for leave" only changes which page is SHOWN, not what the
+          account is actually allowed to do; the Employee endpoints already
+          accept Supervisors/Managers/HR Admins acting on their own records. */}
+      {viewMode === "employee" ? (
+        <EmployeeView user={user} setToast={setToast} />
+      ) : user.role === "EMPLOYEE" ? (
+        <EmployeeView user={user} setToast={setToast} />
       ) : user.role === "HR_ADMIN" ? (
         <Admin user={user} setToast={setToast} />
       ) : (
