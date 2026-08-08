@@ -1,187 +1,98 @@
 # AI Reflection — Jordon
 
-Leave Management System · Platform, Identity & Self-Service vertical.
+# Where AI added genuine value
 
-**Scope note.** The system ships five AI *product* features (AI-1 natural-language leave
-entry, AI-2 coverage analyzer, AI-3 approval assistant, AI-4 HR chatbot, AI-5 anomaly
-flags). None of them belong to Member 1 — this vertical is identity, access and
-self-service, which is deliberately deterministic. So this reflection is about **AI as a
-development tool**: where an AI coding assistant added real value while building the
-vertical, where its output had to be modified, and what that changed about how the work was
-approached.
+# Providing Suggestions and Ideas
 
----
+One of the main ways AI added genuine value to my work was by providing suggestions after completing a task. These suggestions gave me additional ideas about what could be improved or added to the application. Instead of only helping me complete the feature I originally asked for, AI often suggested related improvements or additional functionality that I could consider implementing.
 
-## 1. Where AI added genuine value
+This allowed me to expand the application's capabilities beyond my initial requirements. However, I still had to decide which suggestions were actually useful for the application rather than blindly implementing everything that was suggested. This made AI more useful as a source of ideas and possible improvements rather than simply a tool that generated code.
 
-### Unfamiliar libraries, quickly
+# Handling Repetitive Code Structures
 
-The largest single win. Two-factor verification meant working with TOTP (RFC 6238) and
-`otplib` for the first time, and the Excel import meant SheetJS. Reading both from scratch
-would have cost most of a day each. With AI assistance a working enrolment flow — secret
-generation, `otpauth://` URI, QR data URL, verification — existed within an hour, and the
-same for converting an uploaded `.xlsx` first sheet into the CSV the existing import
-endpoint already accepted.
+AI was particularly useful when implementing features that followed an established structure. Once the structure of an endpoint had been decided, subsequent endpoints usually followed a similar pattern, such as Yup validation, role guards, try/catch error handling and audit logging.
 
-The value was not "it wrote the code". It was **compressing the unknown-unknowns**: I did
-not know that authenticator apps expect base32, that a `±1` time-step window is standard for
-clock drift, or that SheetJS can go straight from a workbook to CSV. Those are things you
-either already know or spend hours discovering.
+For example, features such as invitation resend and cancellation, account actions, and announcement CRUD operations followed similar structures but used different fields and requirements. AI was able to generate these repetitive sections quickly and consistently. This saved time and reduced the amount of repetitive code that I had to write manually.
 
-### Repetitive structure
+This was especially valuable because manually reproducing the same structure multiple times can be both slow and prone to small mistakes. AI allowed me to focus more of my time on the parts of the application that required actual design decisions and testing.
 
-Once the shape of an endpoint was settled — yup validation, role guard, try/catch, audit
-log — every subsequent endpoint was mostly the same shape with different fields. Invitation
-resend/cancel, the account actions, the announcement CRUD: AI generated these fast and
-consistently, which is exactly where hand-writing is both slow and error-prone.
+# Faster Development
 
-### Documentation and translations
+Another major benefit was the speed at which AI could generate code. Instead of writing every function and endpoint from scratch, I could use AI to produce an initial implementation and then review, test and modify it.
 
-The API documentation, this schema reference, and the seven-language dictionaries for the
-multi-language UI were all AI-drafted. Documentation in particular is work that is easy to
-skip under deadline; having a complete first draft made it far more likely to actually
-exist.
+This significantly reduced the time required to implement individual features. As a result, I was able to spend more time developing additional functionality rather than spending most of the project writing repetitive code. AI therefore acted as a development accelerator, while I remained responsible for checking whether the generated implementation actually worked correctly within the application.
 
-### Tests I would not have thought to write
+# Understanding Unfamiliar Code
 
-Asked for tests, AI proposed cases I had not considered — a verification code with a leading
-zero, a lookalike domain like `innovare.com.attacker.net`, encrypting the same secret twice
-and asserting the ciphertext differs. The leading-zero case is a real bug class: a naive
-`Math.random() * 1e6` renders `004821` as `4821`, which the user then cannot type in.
+AI also added value by helping me understand parts of the code that I was less familiar with. When I encountered code or programming concepts that I did not fully understand, I could ask AI to explain what the code was doing and why certain approaches were being used.
+
+This was useful because I was not only copying generated code into the application. I could ask questions about specific functions, variables and logic to better understand how they worked. This helped me make more informed decisions when modifying the generated code and made it easier to identify whether an AI suggestion was actually suitable for my application.
+
+As a result, AI acted not only as a coding tool but also as a learning aid. It helped me understand the code I was working with, which gave me more confidence when making changes and deciding whether to accept or reject its suggestions.
+
 
 ---
 
-## 2. Where AI output had to be modified
+Although AI was useful for generating code quickly, I found that generated code could sometimes appear complete while still being incorrect when tested in the actual application. This meant that I could not rely on the generated implementation without testing it and understanding how it interacted with the rest of the system.
 
-This is the more useful half of the reflection. Every item below is a real defect in
-AI-generated code for this vertical, caught before or during testing.
+# Code That Looked Finished but Was Not Actually Working
 
-### 2.1 Code that looked finished but was unreachable
+There were situations where a feature appeared to have been implemented successfully in the code and was also visible in the application, but the feature did not actually complete its intended function.
 
-The authenticator-app option was implemented, reviewed, and appeared complete. Its service
-logic was correct and unit-tested. It was also **completely unusable**, for two reasons:
+One example was the invitation feature. The invitation button appeared to work and the application displayed a message indicating that the invitation had been sent. However, when I checked the recipient's email, there was no invitation message.
 
-- `POST /user/2fa/send` validated `method` against `oneOf(["EMAIL", "SMS"])` — the new value
-  was rejected before reaching any of the working code.
-- The `TwoFactorChallenge.method` column was `ENUM("EMAIL", "SMS")`, so saving the choice
-  would have thrown on MySQL.
+This showed me that a feature appearing to work on the frontend does not necessarily mean that the complete process is functioning correctly. I had to investigate the problem and modify the AI-generated implementation so that the actual email-sending process worked correctly.
 
-Both were places the new feature had to be *added to an existing list*, and both were missed
-because the generated code was locally correct. Unit tests over the service passed happily.
-The bugs only surfaced when the flow was exercised over real HTTP.
+Testing the feature myself was therefore necessary before considering it finished.
 
-**What changed:** I stopped trusting "the function works" as evidence that "the feature
-works", and started testing new paths end-to-end through the actual endpoints.
+# Accidentally Removing Existing Functionality
 
-### 2.2 A plausible idiom that was wrong for the business context
+Another issue occurred with the announcement banner. The banner was functioning correctly before additional changes were made, but after several prompts and modifications, it suddenly stopped working.
 
-Announcements silently failed to appear when published. The cause:
+Instead of simply accepting the latest AI-generated changes, I had to backtrack and identify what had changed. I then modified the implementation so that the announcement banner continued to function together with the newer features.
 
-```js
-const todayISO = () => new Date().toISOString().slice(0, 10);
-```
+I therefore had to treat existing working features as constraints when evaluating AI's suggestions.
 
-This is the standard way to get a `YYYY-MM-DD` string and appears throughout tutorials.
-`toISOString()` is always **UTC**. The company's business day is Singapore time (UTC+8), and
-the server clock is UTC — so for the first eight hours of every Singapore day, the server
-believed it was still yesterday, and an announcement starting "today" failed its own
-`startDate <= today` check. No error was logged. It simply did not appear.
+# Implementing What Was Asked Instead of What Was Actually Needed
 
-The same idiom had been copied into the delegation date check, so the same bug existed twice.
+A more significant issue occurred with the leave approval system. I initially asked AI to allow Supervisors and Managers to apply for their own leave. AI implemented this requirement as requested, but testing the complete workflow revealed a security and authorisation problem: there was no restriction preventing someone from approving their own leave request.
 
-**What changed:** this is the clearest example of AI producing code that is *correct in
-general and wrong here*. Anything involving dates, currency or locale now gets checked
-against the project's actual context rather than accepted as idiomatic.
+For example, a Supervisor could submit their own leave request and potentially approve that same request themselves. Although the generated code technically followed the original instruction, it did not account for the wider business rule that users should not approve their own leave.
 
-### 2.3 A subtle bug in the AI's own fix
+The solution therefore required more than simply modifying a line of code. I had to consider how the approval hierarchy should work. The final design routes a Supervisor's own leave request to their Manager, while a Manager's or HR Admin's own leave request is routed to HR Admin. Self-approval is also prevented within the authorisation layer for both pending queues and individual or bulk approval actions.
 
-While implementing a variant of TOTP verification, the generated approach set a forced
-timestamp on the shared `otplib` singleton to check adjacent time windows, then restored it
-afterwards. That looks safe. It is not: that library's options setter **merges** rather than
-replaces, so the forced timestamp could not be cleared and leaked into every other TOTP
-check in the process — including live sign-ins.
+AI was able to implement the instruction, but I had to identify the missing business rule through testing and reasoning about the system.
 
-Found by calling the function forty times and then re-running a normal verification. The fix
-was to build an isolated instance via `authenticator.create()` instead of touching the shared
-one. There is now a regression test for it.
+# Two Features That Silently Performed the Same Function
 
-**What changed:** I became much more suspicious of "save state, mutate, restore" patterns,
-and of shared singletons generally.
+Another issue occurred with the "Run year-end carry-forward" and "Apply bulk entitlement" features. Both features were individually reasonable, but they ended up producing the same numbers because both calculated the new entitlement using the country's statutory minimum.
 
-### 2.4 Doing what was asked instead of what was needed
+This created a more serious problem than simply having duplicate functionality. The carry-forward feature could cause employees who were entitled to more than the statutory minimum to lose their additional entitlement. For example, a manager with 21 days of annual leave could have their entitlement reduced to 14 days.
 
-Asked to let Supervisors and Managers apply for their own leave, AI implemented exactly
-that. What it did not do — until the flow was tested — was point out that the approval
-engine had no check preventing someone from approving **their own** request. A Supervisor
-could have filed leave and approved it themselves.
+The problem was not obvious when looking at either function individually. It became apparent only when considering how the two features were supposed to work together. I therefore had to significantly modify the features so that their purposes and outputs were properly differentiated.
 
-The fix needed a real design decision, not a patch: a Supervisor's own leave routes to their
-Manager; a Manager's or HR Admin's own leave routes to HR Admin, who has no same-tier peer
-conflict. Self-exclusion is now enforced in the authorisation layer, both pending queues,
-single decide and bulk decide.
+# Features Becoming Out of Sync
 
-**What changed:** AI answers the question asked. It does not reliably ask *"should this be
-allowed at all?"* — that judgement stayed with me.
+There were also cases where different features used their own variables or calculations instead of relying on the same source of information. This caused different parts of the application to display different values.
 
-### 2.5 Two features that silently did the same thing
+For example, the annual leave remaining shown in the staff detail table could become inconsistent with the actual leave information maintained elsewhere in the application. This could result in users being shown incorrect information.
 
-"Run year-end carry-forward" and "Apply bulk entitlement" produced identical numbers,
-because both computed the new entitlement as the country's statutory minimum. Worse,
-carry-forward was therefore *erasing* above-statutory entitlements every year — a manager on
-21 days would silently drop to 14.
+I had to modify these features so that they remained synchronised with the rest of the application and used consistent values and calculations. This was important because correctness in an application is not only about whether an individual feature works, but also whether different features agree with each other.
 
-Each function was individually reasonable. The defect only existed in the relationship
-between them, which is precisely what a generated function cannot see.
+# 3. What I Learned From Using AI
 
-### 2.6 A refactor that broke a caller
+Overall, using AI taught me that generating code and developing a working application are two different things. AI was very effective at producing code quickly, especially when the required structure was repetitive or already well established. However, it could not always understand the full context of the application, the relationships between features, or the business rules that were not explicitly stated in the prompt.
 
-Making the provisioning year configurable, AI changed the parameter default to `null` and
-added a resolved `activeYear` variable — but left three `LeaveBalance.create()` calls still
-using the raw parameter. Every newly created employee, including CSV/Excel imports, would
-have been given balances for year `null`. Caught by an integration test on the next run.
+Because of this, I learned that AI-generated code should be treated as a starting point rather than a final solution. I needed to test the functionality, check how it interacted with existing features, and question whether the implementation actually achieved the intended outcome.
+
+The examples involving self-approval, leave entitlement, email invitations and synchronisation were particularly important because the problems were not always visible from the generated code alone. They only became clear when I tested the application and considered the behaviour from the user's perspective.
 
 ---
 
-## 3. What this changed about how I work
+# 4. Conclusion
 
-**Tests moved from afterthought to the primary check on AI output.** Reviewing generated
-code by reading it is weak — it usually *looks* right, which is exactly the failure mode.
-Running it is what found §2.1, §2.3 and §2.6.
+AI provided significant value throughout the development of my application by speeding up coding, handling repetitive structures and suggesting additional improvements. It allowed me to implement more features within the available time and reduced the amount of repetitive code that I needed to write manually.
 
-**HTTP-level tests earn their cost.** Unit tests over pure functions were green while the
-authenticator feature was entirely unreachable. Testing through the real endpoints found in
-minutes what unit tests structurally could not see. This is recorded as the highest-value
-next step in `testing.md`.
+At the same time, my experience showed me that AI should not be relied upon blindly. Some suggestions looked complete but failed during actual testing, while others followed my instructions but did not account for important business rules or interactions with existing features. In these situations, I had to reject, modify or redesign the AI-generated solutions based on testing and my understanding of the application's requirements.
 
-**Context beats idiom.** Section 2.2 is the lesson in miniature: the most dangerous
-AI output is not obviously-broken code, it is textbook-correct code applied to a situation
-where the textbook does not hold.
-
-**Cross-cutting reasoning stayed manual.** Every defect that involved *relationships* —
-carry-forward vs bulk entitlement, self-approval, the year-sync problem where five screens
-each computed "current year" independently — needed someone holding the whole system in
-mind. AI is strong within a file and weak across a system.
-
----
-
-## 4. Honest assessment
-
-AI assistance was worth it. Realistically it saved several days on this vertical, most of
-that in the TOTP and Excel work where the alternative was reading specifications.
-
-But the productivity gain is not uniform, and it is easy to overstate. It was largest for
-**bounded, well-specified, conventional** work — a CRUD endpoint, a translation dictionary,
-a QR code. It shrank sharply for anything requiring judgement about **this system's** rules,
-and it went slightly *negative* in the cases above, where plausible-looking code cost more
-time to debug than writing it carefully would have.
-
-The distinction that matters: AI was reliable at *"how do I do X"* and unreliable at
-*"should X be allowed, and what else does X touch"*. The security-sensitive parts of this
-vertical — who may approve whose leave, what a lockout does, whether a secret can be read
-back — are exactly the second kind. Those needed to be reasoned through and then verified by
-execution, and treating AI output there as finished would have shipped real vulnerabilities:
-the self-approval hole in §2.4 is a genuine one that reached working code.
-
-The workflow I would recommend, and would use again: **let AI draft, then assume the draft
-is wrong until something executes and proves otherwise** — and reserve human attention for
-the questions AI does not know to ask.
+The biggest lesson I took from using AI is that AI can generate solutions quickly, but the developer still needs to determine whether those solutions are correct. My role was not simply to accept the code produced by AI, but to test it, identify problems, understand why they occurred and make the necessary decisions to ensure the final application worked as intended.
