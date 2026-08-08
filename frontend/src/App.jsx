@@ -1,156 +1,189 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Toaster } from "react-hot-toast";
-import { AuthProvider } from "./context/AuthContext";
-import useAuth from "./hooks/useAuth";
-import ProtectedRoute from "./components/common/ProtectedRoute";
-import Navbar from "./components/common/Navbar";
-import Sidebar from "./components/common/Sidebar";
-import AnnouncementBanner from "./components/common/AnnouncementBanner";
-import OwnedByNotice from "./components/common/OwnedByNotice";
-import { ROLE_HOME } from "./lib/nav";
-
-import LoginPage from "./pages/LoginPage";
-import RegisterPage from "./pages/RegisterPage";
-import DashboardPage from "./pages/DashboardPage";
-import LeaveApplyPage from "./pages/LeaveApplyPage";
-import LeaveHistoryPage from "./pages/LeaveHistoryPage";
-import CalendarPage from "./pages/CalendarPage";
-import ProfilePage from "./pages/ProfilePage";
-import SecurityPage from "./pages/SecurityPage";
-import AnnouncementsAdminPage from "./pages/AnnouncementsAdminPage";
-import InvitationsPage from "./pages/InvitationsPage";
-import EntitlementsPage from "./pages/EntitlementsPage";
-import HRAdminHomePage from "./pages/HRAdminHomePage";
-
-function AppShell({ children }) {
-  return (
-    <div className="min-h-screen bg-slate-100 text-slate-800">
-      <Navbar />
-      <AnnouncementBanner />
-      <div className="max-w-6xl mx-auto flex gap-6 px-4 py-6">
-        <Sidebar />
-        <main className="flex-1 min-w-0">{children}</main>
-      </div>
-    </div>
-  );
-}
-
-// Sends an authenticated user to their role's default landing page — used
-// for "/" and any unmatched path so every role always has somewhere to go.
-function RoleHomeRedirect() {
-  const { user } = useAuth();
-  return <Navigate to={ROLE_HOME[user.role] ?? "/profile"} replace />;
-}
+import { useState, useEffect } from "react";
+import http from "./lib/http";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import EmployeeView from "./pages/EmployeeView";
+import Approver from "./pages/Approver";
+import Admin from "./pages/Admin";
+import AnnouncementBanner from "./components/AnnouncementBanner";
+import ProfilePanel from "./components/ProfilePanel";
 
 export default function App() {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
+  // M1 (UC-24): an invitation link (?inviteToken=...) opens the standalone
+  // account-creation page rather than the sign-in card, because the person
+  // arriving has no account to sign in with yet. Read once on mount and the
+  // token is removed from the address bar so it isn't left in history.
+  const [inviteToken, setInviteToken] = useState(() => {
+    const raw = new URLSearchParams(window.location.search).get("inviteToken");
+    return raw ? raw.replace(/\s+/g, "") : null;
+  });
+  const [signInNotice, setSignInNotice] = useState("");
+  // M1: Supervisors/Managers/HR Admins can also apply for leave for
+  // themselves, using the same page an Employee sees. "role" shows their
+  // normal role page (Approver/Admin); "employee" shows the Employee page
+  // instead, without changing who they actually are or what the server
+  // enforces per-request. An EMPLOYEE has nothing to switch to, so this is
+  // simply unused for that role.
+  const [viewMode, setViewMode] = useState("role");
+
+  // Restore session from stored JWT (lab5 /user/auth pattern).
+  //
+  // An invitation link is for creating a BRAND-NEW account, so it must never
+  // drop the visitor into someone else's dashboard. If a demo session is still
+  // stored from earlier, clear it and stay signed out: this makes the invite
+  // link open the Register page straight away, and it means finishing
+  // registration lands on the sign-in screen (ready for the new credentials)
+  // rather than the old account's dashboard. Demo accounts stay reachable from
+  // the sign-in page's demo buttons as usual.
+  useEffect(() => {
+    if (inviteToken) {
+      localStorage.clear();
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+    if (localStorage.getItem("accessToken")) {
+      http
+        .get("/user/auth")
+        .then((res) => setUser(res.data.user))
+        .catch(() => localStorage.clear())
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
+  }, [inviteToken]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const logout = () => {
+    localStorage.clear();
+    setUser(null);
+    setViewMode("role");
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen lf-page flex items-center justify-center text-lf-text-subtle">
+        Loading…
+      </div>
+    );
+  }
+
+  // Account creation from an invitation — its own page, before any sign-in.
+  if (!user && inviteToken) {
+    return (
+      <Register
+        token={inviteToken}
+        onDone={(message) => {
+          setInviteToken(null);
+          window.history.replaceState({}, "", "/");
+          if (message) setSignInNotice(message);
+        }}
+      />
+    );
+  }
+
+  if (!user) {
+    return <Login onLogin={setUser} notice={signInNotice} />;
+  }
+
+  const roleHomeLabel = (role) =>
+    role === "SUPERVISOR" ? "Supervisor Approvals"
+    : role === "MANAGER" ? "Manager Approvals"
+    : role === "HR_ADMIN" ? "HR Administration"
+    : "Employee Dashboard";
+
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Toaster position="bottom-center" />
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+    <div className="min-h-screen lf-page">
+      <header className="bg-teal-900 text-white shadow-lf-md">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-teal-300">
+              Innovare Management · Leave Management System
+            </p>
+            <h1 className="text-xl font-semibold">
+              {viewMode === "employee" ? "Employee Dashboard" : roleHomeLabel(user.role)}
+            </h1>
+          </div>
 
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute>
-                <AppShell>
-                  <Routes>
-                    {/* Member 1 — available to every role */}
-                    <Route path="/profile" element={<ProfilePage />} />
-                    <Route path="/security" element={<SecurityPage />} />
+          {/* M1: only roles with somewhere ELSE to go get this — an Employee's
+              own page already IS the "apply for leave" page. */}
+          {user.role !== "EMPLOYEE" && (
+            <button
+              type="button"
+              onClick={() => setViewMode((v) => (v === "employee" ? "role" : "employee"))}
+              className="lf-btn lf-btn-sm text-sm bg-teal-700 text-white hover:bg-teal-600 border-transparent focus-visible:ring-offset-teal-900"
+            >
+              {viewMode === "employee" ? `← Back to ${roleHomeLabel(user.role)}` : "Apply for leave"}
+            </button>
+          )}
 
-                    {/* Employee Experience vertical */}
-                    <Route
-                      path="/dashboard"
-                      element={
-                        <ProtectedRoute roles={["EMPLOYEE"]}>
-                          <DashboardPage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/apply"
-                      element={
-                        <ProtectedRoute roles={["EMPLOYEE"]}>
-                          <LeaveApplyPage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/history"
-                      element={
-                        <ProtectedRoute roles={["EMPLOYEE"]}>
-                          <LeaveHistoryPage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/calendar"
-                      element={
-                        <ProtectedRoute roles={["EMPLOYEE"]}>
-                          <CalendarPage />
-                        </ProtectedRoute>
-                      }
-                    />
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="font-medium leading-tight">{user.name}</p>
+              <p className="text-xs text-teal-200">
+                {user.role.charAt(0) + user.role.slice(1).toLowerCase()} · {user.team}
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center font-semibold shadow-sm ring-2 ring-teal-700/40">
+              {user.initials}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowProfile(true)}
+              className="lf-btn lf-btn-sm text-sm bg-teal-800 text-white hover:bg-teal-700 border-transparent focus-visible:ring-offset-teal-900"
+            >
+              My account
+            </button>
+            <button
+              type="button"
+              onClick={logout}
+              className="lf-btn lf-btn-sm text-sm bg-teal-800 text-white hover:bg-teal-700 border-transparent focus-visible:ring-offset-teal-900"
+            >
+              Log out
+            </button>
+          </div>
+        </div>
+      </header>
 
-                    {/* Approval, Delegation & Notification vertical */}
-                    <Route
-                      path="/approvals"
-                      element={
-                        <ProtectedRoute roles={["SUPERVISOR", "MANAGER"]}>
-                          <OwnedByNotice
-                            title="Approval queue"
-                            description="The Supervisor/Manager approval queue and AI-3 summary cards live in the Approval, Delegation & Notification vertical."
-                          />
-                        </ProtectedRoute>
-                      }
-                    />
+      {toast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-11/12 bg-slate-900 text-white text-sm rounded-xl shadow-lf-lg px-4 py-3">
+          {toast}
+        </div>
+      )}
 
-                    {/* HR Admin, Analytics & Automation vertical + Member 1's HR-facing screens */}
-                    <Route
-                      path="/admin"
-                      element={
-                        <ProtectedRoute roles={["HR_ADMIN"]}>
-                          <HRAdminHomePage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/invitations"
-                      element={
-                        <ProtectedRoute roles={["HR_ADMIN"]}>
-                          <InvitationsPage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/announcements"
-                      element={
-                        <ProtectedRoute roles={["HR_ADMIN"]}>
-                          <AnnouncementsAdminPage />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/entitlements"
-                      element={
-                        <ProtectedRoute roles={["HR_ADMIN"]}>
-                          <EntitlementsPage />
-                        </ProtectedRoute>
-                      }
-                    />
+      <AnnouncementBanner />
 
-                    <Route path="/" element={<RoleHomeRedirect />} />
-                    <Route path="*" element={<RoleHomeRedirect />} />
-                  </Routes>
-                </AppShell>
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+      {showProfile && (
+        <ProfilePanel
+          user={user}
+          onClose={() => setShowProfile(false)}
+          onUpdated={(u) => setUser((prev) => ({ ...prev, ...u }))}
+        />
+      )}
+
+      {/* Role decides the DEFAULT page this account sees. The server enforces
+          the same rule again on every API call (requireRole) — switching to
+          "Apply for leave" only changes which page is SHOWN, not what the
+          account is actually allowed to do; the Employee endpoints already
+          accept Supervisors/Managers/HR Admins acting on their own records. */}
+      {viewMode === "employee" ? (
+        <EmployeeView user={user} setToast={setToast} />
+      ) : user.role === "EMPLOYEE" ? (
+        <EmployeeView user={user} setToast={setToast} />
+      ) : user.role === "HR_ADMIN" ? (
+        <Admin user={user} setToast={setToast} />
+      ) : (
+        <Approver user={user} setToast={setToast} />
+      )}
+    </div>
   );
 }
