@@ -79,7 +79,7 @@ For example, the annual leave remaining shown in the staff detail table could be
 
 I had to modify these features so that they remained synchronised with the rest of the application and used consistent values and calculations. This was important because correctness in an application is not only about whether an individual feature works, but also whether different features agree with each other.
 
-# 3. What I Learned From Using AI
+# What I Learned From Using AI
 
 Overall, using AI taught me that generating code and developing a working application are two different things. AI was very effective at producing code quickly, especially when the required structure was repetitive or already well established. However, it could not always understand the full context of the application, the relationships between features, or the business rules that were not explicitly stated in the prompt.
 
@@ -89,7 +89,7 @@ The examples involving self-approval, leave entitlement, email invitations and s
 
 ---
 
-# 4. Conclusion
+# Conclusion
 
 AI provided significant value throughout the development of my application by speeding up coding, handling repetitive structures and suggesting additional improvements. It allowed me to implement more features within the available time and reduced the amount of repetitive code that I needed to write manually.
 
