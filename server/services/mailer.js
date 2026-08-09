@@ -57,9 +57,14 @@ const readConfig = () => {
     // company aliases are not provisioned. It is disabled by default and is
     // always refused in production. The original recipient is retained only in
     // the outgoing message metadata; logs and return values expose a mask.
+    // EMAIL_TEST_REDIRECT_TO accepts a comma-separated list so a whole group
+    // can receive every code, not just one controlled inbox.
     const testRedirectRequested = parseBoolean(process.env.EMAIL_TEST_MODE, false);
     const testRedirectEnabled = testRedirectRequested && process.env.NODE_ENV !== 'production';
-    const testRedirectTo = normalizedEmail(process.env.EMAIL_TEST_REDIRECT_TO);
+    const testRedirectTo = String(process.env.EMAIL_TEST_REDIRECT_TO || '')
+        .split(',')
+        .map(normalizedEmail)
+        .filter(Boolean);
 
     const missing = [];
     if (enabled) {
@@ -67,7 +72,9 @@ const readConfig = () => {
         if (!user) missing.push('SMTP_USER');
         if (!pass) missing.push('SMTP_PASS');
         if (!validEmail(fromEmail)) missing.push('SMTP_FROM_EMAIL');
-        if (testRedirectEnabled && !validEmail(testRedirectTo)) missing.push('EMAIL_TEST_REDIRECT_TO');
+        if (testRedirectEnabled && (testRedirectTo.length === 0 || !testRedirectTo.every(validEmail))) {
+            missing.push('EMAIL_TEST_REDIRECT_TO');
+        }
     }
 
     return {
@@ -217,7 +224,7 @@ const sendMail = async ({ to, subject, text, html, context = {} }) => {
 
     try {
         const redirected = config.testRedirectEnabled;
-        const deliveryRecipient = redirected ? config.testRedirectTo : recipient;
+        const deliveryRecipient = redirected ? config.testRedirectTo.join(', ') : recipient;
         const info = await getTransporter().sendMail({
             from: { name: config.fromName, address: config.fromEmail },
             to: deliveryRecipient,
