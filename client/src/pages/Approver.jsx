@@ -169,7 +169,10 @@ export default function Approver({ user, setToast }) {
         setBulkConfirm(null);
         load();
       } catch (err) {
-        const msg = err.response?.data?.message || "Bulk decision failed.";
+        const msg =
+          err.response?.data?.message ||
+          (err.response?.data?.errors || []).join("; ") ||
+          "Bulk decision failed. Refresh the queue and try again.";
         toast.error(msg, { id: `leave-bulk-${approve ? "approve" : "reject"}-error` });
       } finally {
         setBulkBusy(false);

@@ -1279,20 +1279,34 @@ router.put("/bulk-decide", validateToken, requireRole("SUPERVISOR", "MANAGER", "
                 continue;
             }
             // Wrong tier (and flagged/ack etc.) surface as per-id business messages from decideOne
-            const outcome = await decideOne(
-                req.user, request, data.approve, data.acknowledgeException,
-                data.approve ? null : data.rejectionReason,
-                data.comment || (data.approve ? null : data.rejectionReason)
-            );
-            results.push(outcome.ok
-                ? { id, ok: true, status: outcome.status }
-                : { id, ok: false, message: outcome.message });
+            try {
+                const outcome = await decideOne(
+                    req.user, request, data.approve, data.acknowledgeException,
+                    data.approve ? null : data.rejectionReason,
+                    data.comment || (data.approve ? null : data.rejectionReason)
+                );
+                results.push(outcome.ok
+                    ? { id, ok: true, status: outcome.status }
+                    : { id, ok: false, message: outcome.message });
+            } catch (err) {
+                // Bulk actions are best-effort per request. A database or
+                // notification problem for one row must not turn every other
+                // selected row into a generic "bulk decision failed" toast.
+                console.error(`[bulk-decide] request ${id} failed:`, err);
+                results.push({
+                    id,
+                    ok: false,
+                    message: "This request could not be processed. Refresh the queue and try it individually."
+                });
+            }
         }
 
         res.json({ results });
     }
     catch (err) {
-        res.status(400).json({ errors: err.errors });
+        if (err.errors) return res.status(400).json({ errors: err.errors });
+        console.error("[bulk-decide] request failed:", err);
+        res.status(500).json({ message: "Bulk decision could not be completed. Please refresh and try again." });
     }
 });
 
