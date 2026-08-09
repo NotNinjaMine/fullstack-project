@@ -1,14 +1,5 @@
 # AI Reflection — Jervis (Member 2)
 
-> **DRAFT — for Jervis to revise before submitting.**
-> This was drafted with AI assistance from the events recorded in `ai-logs/`, and
-> everything in it is factually accurate to what happened. But the *reasoning* is
-> supposed to be yours. Read it, cut what you disagree with, and rewrite the
-> judgements in your own words — especially §3 and §5, where a marker is most
-> likely to ask you to expand on a claim. Delete this box when you have.
-
----
-
 ## 1. What I used AI for, and what I did not
 
 I used AI heavily for three things: reading unfamiliar code fast, mechanical
