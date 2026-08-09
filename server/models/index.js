@@ -3,6 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 const Sequelize = require('sequelize');
+// Sequelize loads the mysql2 dialect via a computed require(), which Vercel's
+// build-time file tracer can't follow — without this explicit require the
+// deployed bundle omits mysql2 entirely and every query fails at runtime.
+require('mysql2');
 const process = require('process');
 const basename = path.basename(__filename);
 const db = {};
@@ -21,6 +25,12 @@ if (process.env.VERCEL) {
   // so a small max here keeps concurrent invocations from exhausting the
   // database's connection limit.
   sequelizeOptions.pool = { max: 2, min: 0, idle: 5000, acquire: 30000 };
+}
+if (process.env.DB_SSL === 'true') {
+  // Managed MySQL (e.g. TiDB Serverless, PlanetScale) refuses plaintext
+  // connections. Local MySQL has no cert to verify against, so this is
+  // opt-in rather than always-on.
+  sequelizeOptions.dialectOptions = { ssl: { minVersion: 'TLSv1.2' } };
 }
 let sequelize = new Sequelize(
   process.env.DB_NAME, process.env.DB_USER, process.env.DB_PWD,
