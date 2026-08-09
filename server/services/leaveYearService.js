@@ -9,18 +9,34 @@
 // that moment on every one of those views needs to agree the new year is now
 // current, or HR could confirm a rollover and watch nothing on screen change
 // until the real calendar caught up months later. The single source of truth
-// is simply the HIGHEST year any LeaveBalance row exists for, never lower
-// than the real calendar year.
+// is the highest year whose balances cover the whole user population, never
+// lower than the real calendar year. A single partial future-year record must
+// not make every other employee's current balance disappear.
 //
 // NOTE: this is deliberately NOT used for reports that are about historical
 // leave actually taken within a specific real calendar year (leave
 // utilisation, sick-leave trend) — those stay tied to real dates on purpose.
-const { LeaveBalance } = require('../models');
+const { User, LeaveBalance } = require('../models');
 
 const currentLeaveYear = async () => {
     const maxYear = await LeaveBalance.max('year');
     const calendarYear = new Date().getFullYear();
-    return Math.max(Number(maxYear) || 0, calendarYear);
+    const candidate = Number(maxYear) || calendarYear;
+    if (candidate <= calendarYear) return calendarYear;
+
+    const [userCount, usersWithCandidateBalances] = await Promise.all([
+        User.count(),
+        LeaveBalance.findAll({
+            where: { year: candidate },
+            attributes: ['userId'],
+            group: ['userId'],
+            raw: true
+        })
+    ]);
+
+    // A completed rollover creates balances for every user. Only then should
+    // a future year become globally active.
+    return usersWithCandidateBalances.length >= userCount ? candidate : calendarYear;
 };
 
 module.exports = { currentLeaveYear };

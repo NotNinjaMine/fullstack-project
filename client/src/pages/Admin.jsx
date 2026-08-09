@@ -1648,13 +1648,17 @@ function LeaveAdminTab() {
   useEffect(() => { load(); }, [load]);
 
   const adjust = () => {
-    if (!requestId.trim()) { toast.error("Enter the request number to adjust."); return; }
+    const normalizedRequestId = requestId.trim().replace(/^REQ[-\s#]*/i, "");
+    if (!/^\d+$/.test(normalizedRequestId)) {
+      toast.error("Enter a valid request number, for example REQ-128 or 128.");
+      return;
+    }
     if (reason.trim().length < 5) { toast.error("Give a reason (at least 5 characters) — it goes on the audit trail."); return; }
     if (!cancelEntirely && !newEndDate) { toast.error("Pick the new last day of leave, or tick 'void the whole leave'."); return; }
     setBusy(true);
     setResult(null);
     http
-      .put(`/leave/${requestId.trim()}/hr-adjust`,
+      .put(`/leave/${normalizedRequestId}/hr-adjust`,
         cancelEntirely
           ? { cancelEntirely: true, reason: reason.trim() }
           : { newEndDate, reason: reason.trim() })
@@ -1680,9 +1684,10 @@ function LeaveAdminTab() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <input
             className="lf-input"
-            placeholder="Request number (e.g. 128)"
+            placeholder="Request number (e.g. REQ-128)"
             value={requestId}
-            onChange={(e) => setRequestId(e.target.value.replace(/[^0-9]/g, ""))}
+            onChange={(e) => setRequestId(e.target.value)}
+            aria-label="Request number"
           />
           <input
             className="lf-input"

@@ -1946,12 +1946,11 @@ export default function Employee({ user, setToast }) {
 
       {/* F4: confirm cancel leave */}
       {/* UC-03 (extended): pick the new last day of leave. */}
-      <Modal
-        open={!!shortenTarget}
-        onClose={() => !shortenBusy && setShortenTarget(null)}
-        title={shortenTarget ? `Return early from REQ-${shortenTarget.id}` : "Return early"}
-      >
-        {shortenTarget && (
+      {shortenTarget && (
+        <Modal
+          onClose={() => !shortenBusy && setShortenTarget(null)}
+          title={`Return early from REQ-${shortenTarget.id}`}
+        >
           <div className="space-y-3">
             <p className="text-sm text-lf-text-muted">
               {typeLabel(shortenTarget.leaveType)} · {fmt(shortenTarget.startDate)} →{" "}
@@ -1996,8 +1995,8 @@ export default function Employee({ user, setToast }) {
               </button>
             </div>
           </div>
-        )}
-      </Modal>
+        </Modal>
+      )}
 
       <ConfirmDialog
         open={!!cancelTarget}

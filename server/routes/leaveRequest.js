@@ -1577,7 +1577,9 @@ router.put("/:id/hr-adjust", validateToken, requireRole("HR_ADMIN"), async (req,
             return { status: 200, request, employee, restored, previousEnd };
         });
 
-        if (result.status === 404) return res.sendStatus(404);
+        if (result.status === 404) {
+            return res.status(404).json({ message: `Leave request ${req.params.id} was not found.` });
+        }
         if (result.status !== 200) return res.status(result.status).json({ message: result.message });
 
         try {
