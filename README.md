@@ -7,7 +7,7 @@ cleanly when no AI provider is configured.
 
 | | |
 |---|---|
-| **Live URL** | _Not yet deployed — see [Deployment](#deployment). Replace this line with the public URL once it is live._ |
+| **Live URL** | https://innovare-leave-client.vercel.app (API: https://innovare-leave.vercel.app) |
 | **Stack** | React 18 + Vite · Node.js + Express · MySQL 8 (Sequelize) |
 | **Tests** | 242 across 18 suites, all passing |
 | **API** | 130 endpoints across 12 route modules |
@@ -202,8 +202,26 @@ Expected: **242 passed, 18 suites**.
 
 ## Deployment
 
-Not yet deployed. The application is deliberately portable — one Node process, one
-MySQL database, and a static client bundle — so any of the following works.
+Deployed on Vercel as two projects from this repo — `innovare-leave-api` (root
+directory `server`, serverless) and `innovare-leave-client` (root directory
+`client`, static). Database is TiDB Serverless (MySQL-compatible, requires TLS).
+The application is also deliberately portable — one Node process, one MySQL
+database, and a static client bundle — so any of the steps below work too if you
+prefer a different host.
+
+**Serverless-specific notes for the current deployment:**
+- `server/vercel.json` routes all requests to `index.js` as a single Node function.
+- `models/index.js` explicitly `require('mysql2')` — Sequelize loads MySQL
+  dialects via a computed `require()` that Vercel's build-time file tracer can't
+  follow, so without this the deployed bundle silently omits the driver.
+- Set `DB_SSL=true` for TiDB/PlanetScale-style hosts that reject plaintext
+  connections; leave unset for local MySQL.
+- `sequelize.sync()` runs on the first request per cold start (there's no
+  long-lived startup phase under serverless) instead of once at boot.
+- The 24h reminder, delegation-expiry, and scheduled-report background jobs use
+  `setInterval` and only run under a long-lived process (`npm start`) — they do
+  **not** fire on Vercel's serverless functions. Fine for a demo; would need
+  converting to Vercel Cron Jobs for production use.
 
 ### 1. Build the client
 
