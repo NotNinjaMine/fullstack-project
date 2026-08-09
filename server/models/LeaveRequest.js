@@ -87,6 +87,16 @@ module.exports = (sequelize, DataTypes) => {
         // flag; the same two-tier chain then decides the cancellation. On final
         // approval the request becomes CANCELLED and the balance is restored; on
         // rejection it snaps back to APPROVED and the leave stands.
+        // M2 (UC-03, partial cancellation): the proposed NEW last day of leave
+        // while an employee's "returning early" request waits for approval.
+        //   cancellationRequested + pendingEndDate  -> shorten to that date
+        //   cancellationRequested alone             -> withdraw the whole thing
+        // On final approval endDate moves here, `days` is recomputed, and only
+        // the difference is returned to the balance.
+        pendingEndDate: {
+            type: DataTypes.DATEONLY,
+            allowNull: true
+        },
         cancellationRequested: {
             type: DataTypes.BOOLEAN,
             allowNull: false,

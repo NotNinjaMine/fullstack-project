@@ -145,6 +145,112 @@ const forecastBalance = (balance, pendingDays, requestedDays) => {
     };
 };
 
+/* ---------------- UC-03 (extended): shortening an approved leave ----------------
+ * One engine, two doors:
+ *   - the employee returning early from leave that has NOT started yet, which
+ *     re-enters the Supervisor -> Manager chain like any other withdrawal, and
+ *   - HR correcting leave that has already started or passed, which is applied
+ *     immediately because HR is the authority of last resort (it is exactly the
+ *     case PUT /leave/:id/cancel tells the employee to take to HR).
+ *
+ * Both mean the same thing: keep the start date, pull the end date back, and
+ * return ONLY the difference in chargeable days to the balance. The day counts
+ * are computed by M4's calculation service and passed in, so this stays pure.
+ */
+
+// Is `iso` inside [startISO, endISO]? All three are 'YYYY-MM-DD'.
+const withinRange = (iso, startISO, endISO) => iso >= startISO && iso <= endISO;
+
+/**
+ * Validate a proposed new end date for an approved leave.
+ *
+ * request:  { startDate, endDate, status, halfDay, cancellationRequested }
+ * newEndISO: the last day the employee will now be away.
+ * options.allowStarted: HR may shorten leave that is already under way; an
+ *   employee may not (they are sent to HR instead).
+ */
+const shortenCheck = (request, newEndISO, todayISO, { allowStarted = false } = {}) => {
+    if (!request || request.status !== "APPROVED") {
+        return { ok: false, message: "Only approved leave can be shortened." };
+    }
+    if (request.cancellationRequested) {
+        return { ok: false, message: "This request is already awaiting a cancellation decision." };
+    }
+    if (request.halfDay) {
+        return { ok: false, message: "A half-day request cannot be shortened — cancel it instead." };
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(newEndISO || ""))) {
+        return { ok: false, message: "Provide the new last day of leave as YYYY-MM-DD." };
+    }
+    if (!withinRange(newEndISO, request.startDate, request.endDate)) {
+        return {
+            ok: false,
+            message: `The new end date must fall inside the original leave (${request.startDate} → ${request.endDate}).`
+        };
+    }
+    if (newEndISO === request.endDate) {
+        return { ok: false, message: "That is already the last day of this leave — nothing to shorten." };
+    }
+    if (!allowStarted && request.startDate <= todayISO) {
+        return {
+            ok: false,
+            message: "This leave has already started — ask HR to adjust it instead."
+        };
+    }
+    return { ok: true };
+};
+
+/**
+ * Work out the balance movement for a shortening.
+ * originalDays / newDays come from M4's calculation service for the employee's
+ * own country calendar, so weekends and public holidays are already excluded.
+ */
+const shortenOutcome = (originalDays, newDays) => {
+    const before = num(originalDays);
+    const after = num(newDays);
+    const returned = Math.round((before - after) * 2) / 2;
+    return {
+        originalDays: before,
+        newDays: after,
+        daysReturned: returned,
+        // Trimming every chargeable day is a full withdrawal, not a shortening.
+        fullyCancelled: after <= 0,
+        ok: returned > 0
+    };
+};
+
+/* ---------------- UC-13 (extended): certificate compliance ---------------- */
+
+// Most leave policies tolerate a short absence on self-declaration but want a
+// certificate beyond it. Kept here as one named constant rather than scattered
+// literals; it belongs in LeavePolicy once HR needs it to differ per country.
+const MC_REQUIRED_AFTER_DAYS = 2;
+
+/**
+ * Should this request have a medical certificate attached, and is one missing?
+ * request: { leaveType, days, attachmentData, status }
+ * typeRow: the LeaveType catalogue row (M5) — `requiresMc` wins when present.
+ */
+const mcComplianceGap = (request, typeRow = null) => {
+    if (!isSickType(request.leaveType)) return null;
+    if (request.attachmentData) return null;
+    if (["CANCELLED", "REJECTED", "DRAFT"].includes(request.status)) return null;
+
+    if (typeRow?.requiresMc) {
+        return {
+            reason: "TYPE_REQUIRES_MC",
+            detail: `${typeRow.name || request.leaveType} always requires a certificate.`
+        };
+    }
+    if (num(request.days) > MC_REQUIRED_AFTER_DAYS) {
+        return {
+            reason: "EXCEEDS_SELF_DECLARATION",
+            detail: `${num(request.days)} days of sick leave without a certificate — policy allows self-declaration up to ${MC_REQUIRED_AFTER_DAYS}.`
+        };
+    }
+    return null;
+};
+
 /* ---------------- UC-27: swap compatibility ---------------- */
 
 // Dates swap, balances do not (UC-27). That only holds when both entries cost
@@ -184,6 +290,11 @@ module.exports = {
     MAX_SICK_BACKDATE_DAYS,
     ALLOWED_ATTACHMENT_TYPES,
     MAX_ATTACHMENT_CHARS,
+    MC_REQUIRED_AFTER_DAYS,
+    withinRange,
+    shortenCheck,
+    shortenOutcome,
+    mcComplianceGap,
     sgtTodayISO,
     daysBetweenISO,
     rangesOverlap,

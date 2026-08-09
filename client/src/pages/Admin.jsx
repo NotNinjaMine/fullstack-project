@@ -4,7 +4,7 @@ import http from "../lib/http";
 import StaffTable, { useStaff } from "../components/StaffTable";
 import {
   LayoutDashboard, Users, FileText, CalendarClock, BarChart3,
-  ScrollText, Sparkles, Megaphone, Mail, ShieldAlert, Send,
+  ScrollText, Sparkles, Megaphone, Mail, ShieldAlert, Send, ClipboardCheck,
   Clock, CheckCircle2, AlertTriangle, Download, Settings, Info,
 } from "lucide-react";
 
@@ -107,6 +107,7 @@ export default function Admin({ user, setToast }) {
     ["reports", "Reports", BarChart3],
     ["audit", "Audit trail", ScrollText],
     ["anomalies", "Risk flags", ShieldAlert],
+    ["leave-admin", "Leave corrections", ClipboardCheck],
     ["announcements", "Announcements", Megaphone],
     ["invitations", "Invitations", Mail],
   ];
@@ -137,6 +138,7 @@ export default function Admin({ user, setToast }) {
       {tab === "reports" && <ReportsTab />}
       {tab === "audit" && <AuditTab />}
       {tab === "anomalies" && <AnomaliesTab />}
+      {tab === "leave-admin" && <LeaveAdminTab />}
       {tab === "announcements" && <AnnouncementsTab />}
       {tab === "invitations" && <InvitationsTab />}
     </main>
@@ -1607,6 +1609,168 @@ function InvitationsTab() {
           ))}
           {list.length === 0 && <p className="text-sm text-lf-text-subtle">No invitations yet.</p>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* ===================== Leave corrections (M2, UC-03 + UC-13) =====================
+ * The HR end of two employee-side use cases.
+ *
+ * "Adjust leave" is the door PUT /leave/:id/cancel points at: once an absence has
+ * started, the employee can no longer withdraw it themselves, so HR shortens or
+ * voids it here and the right number of days goes back. Every change is audited
+ * with the reason typed below.
+ *
+ * "Certificates outstanding" lists sick leave that ought to have an MC on file
+ * and does not, so HR can chase it rather than discovering it at year-end.
+ */
+function LeaveAdminTab() {
+  const [compliance, setCompliance] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const [requestId, setRequestId] = useState("");
+  const [newEndDate, setNewEndDate] = useState("");
+  const [cancelEntirely, setCancelEntirely] = useState(false);
+  const [reason, setReason] = useState("");
+  const [result, setResult] = useState(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    http
+      .get("/leave/mc-compliance")
+      .then((res) => setCompliance(res.data))
+      .catch(() => setCompliance(null))
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const adjust = () => {
+    if (!requestId.trim()) { toast.error("Enter the request number to adjust."); return; }
+    if (reason.trim().length < 5) { toast.error("Give a reason (at least 5 characters) — it goes on the audit trail."); return; }
+    if (!cancelEntirely && !newEndDate) { toast.error("Pick the new last day of leave, or tick 'void the whole leave'."); return; }
+    setBusy(true);
+    setResult(null);
+    http
+      .put(`/leave/${requestId.trim()}/hr-adjust`,
+        cancelEntirely
+          ? { cancelEntirely: true, reason: reason.trim() }
+          : { newEndDate, reason: reason.trim() })
+      .then((res) => {
+        toast.success(res.data.message);
+        setResult(res.data);
+        setRequestId(""); setNewEndDate(""); setCancelEntirely(false); setReason("");
+        load();
+      })
+      .catch((err) => toast.error(err.response?.data?.message || (err.response?.data?.errors || []).join(", ") || "Adjustment failed."))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="lf-card p-4">
+        <h3 className="font-semibold text-lf-text mb-1">Adjust leave</h3>
+        <p className="text-sm text-lf-text-muted mb-3">
+          For leave that has already started, an employee can no longer withdraw it themselves —
+          they are told to ask HR. Shorten it to the day they actually returned, or void it
+          entirely. The unused days go straight back to their balance and the change is audited.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <input
+            className="lf-input"
+            placeholder="Request number (e.g. 128)"
+            value={requestId}
+            onChange={(e) => setRequestId(e.target.value.replace(/[^0-9]/g, ""))}
+          />
+          <input
+            className="lf-input"
+            type="date"
+            title="New last day of leave"
+            disabled={cancelEntirely}
+            value={newEndDate}
+            onChange={(e) => setNewEndDate(e.target.value)}
+          />
+          <label className="flex items-center gap-2 text-sm text-lf-text-muted">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-brand-700 rounded"
+              checked={cancelEntirely}
+              onChange={(e) => setCancelEntirely(e.target.checked)}
+            />
+            Void the whole leave
+          </label>
+        </div>
+        <input
+          className="lf-input mt-2"
+          placeholder="Reason (recorded on the audit trail)"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+        <div className="flex justify-end mt-2">
+          <button type="button" disabled={busy} onClick={adjust} className="lf-btn lf-btn-primary lf-btn-sm">
+            {busy ? "Applying…" : "Apply adjustment"}
+          </button>
+        </div>
+        {result && (
+          <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mt-2">
+            {result.message}
+          </p>
+        )}
+      </div>
+
+      <div className="lf-card p-4">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-semibold text-lf-text">Certificates outstanding</h3>
+          {compliance && (
+            <span className="text-xs text-lf-text-subtle">
+              {compliance.count} to chase · self-declaration allowed up to {compliance.selfDeclarationLimit} day(s)
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-lf-text-muted mb-3">
+          Sick leave with no medical certificate on file that policy says should have one.
+        </p>
+        {loading && <p className="text-sm text-lf-text-subtle">Loading…</p>}
+        {!loading && compliance && compliance.count === 0 && (
+          <p className="text-sm text-emerald-700">Nothing outstanding — every sick leave that needs a certificate has one.</p>
+        )}
+        {!loading && compliance && compliance.count > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-lf-text-subtle border-b border-lf-border">
+                  <th className="py-1.5 pr-3">Request</th>
+                  <th className="py-1.5 pr-3">Employee</th>
+                  <th className="py-1.5 pr-3">Dates</th>
+                  <th className="py-1.5 pr-3">Days</th>
+                  <th className="py-1.5 pr-3">Status</th>
+                  <th className="py-1.5">Why</th>
+                </tr>
+              </thead>
+              <tbody>
+                {compliance.outstanding.map((o) => (
+                  <tr key={o.id} className="border-b border-lf-border/60">
+                    <td className="py-1.5 pr-3 tabular-nums">REQ-{o.id}</td>
+                    <td className="py-1.5 pr-3">
+                      {o.employee?.name || "—"}
+                      <span className="text-xs text-lf-text-subtle"> · {o.employee?.team}</span>
+                    </td>
+                    <td className="py-1.5 pr-3 whitespace-nowrap">
+                      {o.startDate}{o.endDate !== o.startDate ? ` → ${o.endDate}` : ""}
+                    </td>
+                    <td className="py-1.5 pr-3 tabular-nums">{o.days}</td>
+                    <td className="py-1.5 pr-3">
+                      <span className="text-xs bg-lf-muted rounded-full px-2 py-0.5">{o.status.replace("_", " ")}</span>
+                    </td>
+                    <td className="py-1.5 text-xs text-lf-text-muted">{o.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -698,6 +698,10 @@ function RequestCard({ req, isManager, onDecide, selected, onToggleSelect, setTo
   // A cancellation request returns days and frees coverage, so it never needs a
   // coverage exception acknowledgement (UC-03).
   const isCancellation = !!req.cancellationRequested;
+  // UC-03 (extended): a pending new end date means the employee wants to return
+  // early, not to withdraw the leave entirely.
+  const isEarlyReturn = isCancellation && !!req.pendingEndDate;
+  const changeLabel = isEarlyReturn ? "Early return" : "Cancellation";
   const needsAck = isManager && req.flagged && !isCancellation;
   const locked = !String(req.status || "").startsWith("PENDING");
 
@@ -828,7 +832,9 @@ function RequestCard({ req, isManager, onDecide, selected, onToggleSelect, setTo
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <span className={`text-xs rounded-full px-2.5 py-1 ${statusChipClass(req)}`}>
-            {isCancellation
+            {isEarlyReturn
+              ? "Early return request"
+              : isCancellation
               ? "Cancellation request"
               : req.flagged
               ? "Flagged · special approval"
@@ -1019,7 +1025,9 @@ function RequestCard({ req, isManager, onDecide, selected, onToggleSelect, setTo
       {isCancellation && (
         <div className="mx-5 mb-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
           <p className="font-medium">
-            {req.employee?.name} is asking to cancel this approved leave.
+            {isEarlyReturn
+              ? `${req.employee?.name} wants to come back early — ending this leave on ${fmt(req.pendingEndDate)} instead of ${fmt(req.endDate)}.`
+              : `${req.employee?.name} is asking to cancel this approved leave.`}
           </p>
           <p className="text-xs mt-1">
             {isManager
@@ -1050,8 +1058,8 @@ function RequestCard({ req, isManager, onDecide, selected, onToggleSelect, setTo
         >
           {isCancellation
             ? isManager
-              ? "Approve cancellation (final)"
-              : "Endorse cancellation → Manager"
+              ? `Approve ${changeLabel.toLowerCase()} (final)`
+              : `Endorse ${changeLabel.toLowerCase()} → Manager`
             : isManager
             ? req.flagged
               ? "Approve exception (final)"
@@ -1081,8 +1089,10 @@ function RequestCard({ req, isManager, onDecide, selected, onToggleSelect, setTo
         title={
           isCancellation
             ? isManager
-              ? `Cancel ${req.employee?.name}'s approved leave?`
-              : `Endorse ${req.employee?.name}'s cancellation?`
+              ? isEarlyReturn
+                ? `End ${req.employee?.name}'s leave on ${fmt(req.pendingEndDate)}?`
+                : `Cancel ${req.employee?.name}'s approved leave?`
+              : `Endorse ${req.employee?.name}'s ${changeLabel.toLowerCase()}?`
             : isManager
             ? req.flagged
               ? `Approve coverage exception for ${req.employee?.name}?`

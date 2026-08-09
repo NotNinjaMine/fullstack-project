@@ -1,7 +1,7 @@
 // AI-1 (M2): offline natural-language parser tests. Pure functions, no DB, no API
 // key — this is the path that runs when no LLM is configured, and the fallback
 // whenever the hosted model is unreachable.
-const { heuristicParse } = require('../services/ai');
+const { heuristicParse } = require('../../server/services/ai');
 
 // Fixed reference date so every expectation is stable: Monday 10 August 2026.
 const MON_10_AUG_2026 = new Date(2026, 7, 10);

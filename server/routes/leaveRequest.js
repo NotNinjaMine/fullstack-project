@@ -341,69 +341,113 @@ const notifyCommentParticipants = async (request, actor) => {
  * Runs INSIDE decideOne's transaction (M3), so the balance restore takes the
  * same row lock the deduction does and two approvers cannot restore twice.
  */
+// Cancellation, partial cancellation and HR's adjustment all end the same way:
+// hand a number of days back for the leave year the leave started in. Types that
+// track no balance (unpaid, compassionate, maternity, NS) have no row to touch.
+const restoreDays = async (request, days, transaction) => {
+    const amount = Number(days);
+    if (!(amount > 0)) return 0;
+    const typeRow = await LeaveType.findOne({ where: { code: request.leaveType }, transaction });
+    const tracksBalance = !typeRow || typeRow.affectsAnnualBalance || typeRow.affectsSickBalance;
+    if (!tracksBalance) return 0;
+    const balance = await LeaveBalance.findOne({
+        where: {
+            userId: request.employeeId,
+            leaveType: request.leaveType,
+            year: new Date(request.startDate).getFullYear()
+        },
+        transaction,
+        lock: transaction.LOCK.UPDATE
+    });
+    if (!balance) return 0;
+    balance.used = Math.max(0, Number(balance.used) - amount);
+    await balance.save({ transaction });
+    return amount;
+};
+
 const decideCancellationLocked = async (actor, request, approve, note, transaction) => {
+    // A pending new end date means "returning early"; without one this is a
+    // withdrawal of the whole leave.
+    const partial = !!request.pendingEndDate;
+    const label = partial ? "Early return" : "Cancellation";
+    const decider = actor.role === "BOSS" ? "Boss" : "Manager";
+
     // Same staging as an ordinary decision: only the Supervisor stage hands on.
     if (!chain.isFinalStage(request.status)) {
         if (approve) {
             request.status = chain.nextStatusAfterApproval(request.status);
             await audit(request.id, actor.name,
-                "Cancellation endorsed by Supervisor - routed to Manager", { transaction });
+                `${label} endorsed by Supervisor - routed to Manager`, { transaction });
         } else {
             request.status = "APPROVED";
             request.cancellationRequested = false;
+            request.pendingEndDate = null;
             if (note) request.supervisorNote = note;
             await audit(request.id, actor.name, note
-                ? `Cancellation refused by Supervisor: ${note.slice(0, 100)} - leave stands`
-                : "Cancellation refused by Supervisor - leave stands", { transaction });
+                ? `${label} refused by Supervisor: ${note.slice(0, 100)} - leave stands`
+                : `${label} refused by Supervisor - leave stands`, { transaction });
         }
     } else { // Manager tier, or the Boss on a Manager's own leave — final decision
-        if (approve) {
+        if (approve && partial) {
+            // Returning early: keep the leave, pull the end date back, and give
+            // back ONLY the days no longer being taken.
+            const employee = request.employee || await User.findByPk(request.employeeId, { transaction });
+            const newDays = await daysForUserRange(
+                employee, request.startDate, request.pendingEndDate, request.halfDay
+            );
+            const outcome = rules.shortenOutcome(request.days, newDays);
+            const restored = await restoreDays(request, outcome.daysReturned, transaction);
+
+            request.endDate = request.pendingEndDate;
+            request.days = newDays;
+            request.pendingEndDate = null;
+            request.cancellationRequested = false;
+            request.status = "APPROVED";   // the remaining leave stays approved
+            await audit(request.id, actor.name,
+                `Early return approved by ${decider} - final, leave now ends ${request.endDate}, ${restored} day(s) restored`,
+                { transaction });
+        } else if (approve) {
             request.status = "CANCELLED";
             request.cancellationRequested = false;
-            // Restore the days deducted when the leave was originally approved —
-            // but only for types that actually track a balance (M5 UC-10).
-            const typeRow = await LeaveType.findOne({
-                where: { code: request.leaveType }, transaction
-            });
-            const tracksBalance = !typeRow || typeRow.affectsAnnualBalance || typeRow.affectsSickBalance;
-            if (tracksBalance) {
-                const balance = await LeaveBalance.findOne({
-                    where: {
-                        userId: request.employeeId,
-                        leaveType: request.leaveType,
-                        year: new Date(request.startDate).getFullYear()
-                    },
-                    transaction,
-                    lock: transaction.LOCK.UPDATE
-                });
-                if (balance) {
-                    balance.used = Math.max(0, Number(balance.used) - Number(request.days));
-                    await balance.save({ transaction });
-                }
-            }
+            request.pendingEndDate = null;
+            const restored = await restoreDays(request, request.days, transaction);
             await audit(request.id, actor.name,
-                `Cancellation approved by ${actor.role === "BOSS" ? "Boss" : "Manager"} - final, ${Number(request.days)} day(s) restored`,
+                `Cancellation approved by ${decider} - final, ${restored} day(s) restored`,
                 { transaction });
         } else {
             request.status = "APPROVED";
             request.cancellationRequested = false;
+            request.pendingEndDate = null;
             if (note) request.managerNote = note;
             await audit(request.id, actor.name, note
-                ? `Cancellation refused by Manager: ${note.slice(0, 100)} - leave stands`
-                : "Cancellation refused by Manager - leave stands", { transaction });
+                ? `${label} refused by ${decider}: ${note.slice(0, 100)} - leave stands`
+                : `${label} refused by ${decider} - leave stands`, { transaction });
         }
     }
     await request.save({ transaction });
-    return { ok: true, status: request.status, request, employeeId: request.employeeId, cancellation: true };
+    return {
+        ok: true, status: request.status, request,
+        employeeId: request.employeeId, cancellation: true, partial
+    };
 };
 
 // The employee-facing wording for a cancellation outcome (sent post-commit).
-const cancellationMessage = (request, note) =>
-    request.status === "CANCELLED"
-        ? `Your cancellation of request ${request.id} was approved — ${Number(request.days)} day(s) returned to your balance.`
-        : request.status === "APPROVED"
-            ? `Your cancellation of request ${request.id} was declined${note ? `: ${note}` : ""} — the approved leave stands.`
-            : `Your cancellation of request ${request.id} was endorsed and now awaits the Manager.`;
+// `outcome` carries the partial flag, because by the time this runs the request
+// row has already had pendingEndDate cleared.
+const cancellationMessage = (outcome, note) => {
+    const request = outcome.request;
+    const what = outcome.partial ? "early return from" : "cancellation of";
+    if (request.status === "CANCELLED") {
+        return `Your cancellation of request ${request.id} was approved — ${Number(request.days)} day(s) returned to your balance.`;
+    }
+    if (chain.PENDING_STATUSES.includes(request.status)) {
+        return `Your ${what} request ${request.id} was endorsed and now awaits the ${chain.stageLabel(request.status).replace(" review", "")}.`;
+    }
+    if (outcome.partial && !note) {
+        return `Your early return from request ${request.id} was approved — it now ends ${request.endDate} and the unused day(s) are back in your balance.`;
+    }
+    return `Your ${what} request ${request.id} was declined${note ? `: ${note}` : ""} — the approved leave stands.`;
+};
 
 /* ---------------- single-request decision (shared by /:id/decide and bulk-decide) ---------------- */
 
@@ -592,7 +636,7 @@ const decideOne = async (
     // or notification-channel failure must never roll back a valid decision.
     let notifyMsg = `Your request ${requestId} is now ${outcome.status.replace("_", " ")}.`;
     if (outcome.cancellation) {
-        notifyMsg = cancellationMessage(outcome.request, note);
+        notifyMsg = cancellationMessage(outcome, note);
     } else if (!approve && note) {
         notifyMsg = `Your request ${requestId} was REJECTED. Reason: ${note}`;
     }
@@ -624,7 +668,9 @@ const decideOne = async (
             const managers = await getResponsibleApprovers(outcome.request);
             await notifyMany(
                 managers,
-                outcome.cancellation
+                outcome.partial
+                    ? `An early return from approved leave (REQ-${requestId}) is ready for your final decision.`
+                    : outcome.cancellation
                     ? `A cancellation of approved leave (REQ-${requestId}) is ready for your final decision.`
                     : `Leave request REQ-${requestId} is ready for your final decision.`,
                 {
@@ -1364,6 +1410,267 @@ router.put("/:id/cancel", validateToken, requireRole("EMPLOYEE", "SUPERVISOR", "
         message: req.user.role === "EMPLOYEE"
             ? `Cancellation requested for REQ-${result.request.id}. Your Supervisor and Manager must approve before the ${Number(result.request.days)} day(s) return to your balance.`
             : `Cancellation requested for REQ-${result.request.id}. It must be approved before the ${Number(result.request.days)} day(s) return to your balance.`
+    });
+});
+
+/* ---------------- UC-03 (extended): return early from approved leave ----------------
+ * "I'm coming back on Wednesday after all." The leave is not cancelled — its end
+ * date is pulled back and only the days no longer taken come off `used`. Because
+ * it changes an already-approved absence it goes through the same chain a full
+ * withdrawal does, entering at whichever stage approvalChain dictates for the
+ * applicant's role (so a Manager's early return goes to the Boss, not a peer).
+ *
+ * Leave that has ALREADY started is deliberately refused here: at that point the
+ * employee's own calendar is history, so it is HR's correction to make — see
+ * PUT /leave/:id/hr-adjust below.
+ */
+router.put("/:id/shorten", validateToken, requireRole("EMPLOYEE", "SUPERVISOR", "MANAGER", "HR_ADMIN", "BOSS"), async (req, res) => {
+    let validationSchema = yup.object({
+        newEndDate: yup.string().matches(/^\d{4}-\d{2}-\d{2}$/).required()
+    });
+    try {
+        const data = await validationSchema.validate(req.body, { abortEarly: false });
+
+        const result = await sequelize.transaction(async (transaction) => {
+            const request = await LeaveRequest.findByPk(req.params.id, {
+                include: [{ model: User, as: "employee", attributes: ["id", "name", "team", "country", "role"] }],
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!request) return { status: 404 };
+            if (request.employeeId !== req.user.id) return { status: 403 };
+
+            const check = rules.shortenCheck(request, data.newEndDate, todayISO());
+            if (!check.ok) return { status: 400, message: check.message };
+
+            // What would the shorter range actually cost under this employee's
+            // own country calendar (M4)? That decides how much comes back.
+            const newDays = await daysForUserRange(
+                req.user, request.startDate, data.newEndDate, request.halfDay
+            );
+            const outcome = rules.shortenOutcome(request.days, newDays);
+            if (!outcome.ok) {
+                return {
+                    status: 400,
+                    message: "That would not free up any chargeable days — weekends and public holidays are already excluded."
+                };
+            }
+            if (outcome.fullyCancelled) {
+                return {
+                    status: 400,
+                    message: "That removes every working day. Use Request cancellation to withdraw the whole leave instead."
+                };
+            }
+
+            request.pendingEndDate = data.newEndDate;
+            request.cancellationRequested = true;
+            request.status = chain.initialStatusFor(req.user.role);
+            request.routedTeam = null;
+            request.supervisorNote = null;
+            request.managerNote = null;
+            request.stageEnteredAt = new Date();
+            request.lastReminderKey = null;
+            request.reminderSentAt = null;
+            await request.save({ transaction });
+            await audit(request.id, req.user.name,
+                `Early return requested - would end ${data.newEndDate} instead of ${request.endDate}, releasing ${outcome.daysReturned} day(s)`,
+                { transaction });
+
+            return { status: 200, request, outcome, employee: request.employee };
+        });
+
+        if (result.status === 404) return res.sendStatus(404);
+        if (result.status === 403) return res.sendStatus(403);
+        if (result.status !== 200) return res.status(result.status).json({ message: result.message });
+
+        const teamMembers = await User.findAll({
+            where: { team: result.employee?.team || req.user.team }
+        });
+        try {
+            await notifyNextApprover(req.user, result.request.id, teamMembers,
+                "is an early return from approved leave and needs your review");
+        } catch (_) {
+            console.error(`[notification] early-return delivery failed for request ${result.request.id}.`);
+        }
+
+        res.json({
+            pendingApproval: true,
+            request: result.request,
+            daysReturned: result.outcome.daysReturned,
+            message: `Early return requested for REQ-${result.request.id}. Once approved, it will end ${result.request.pendingEndDate} and ${result.outcome.daysReturned} day(s) return to your balance.`
+        });
+    } catch (err) {
+        if (err.errors) return res.status(400).json({ errors: err.errors });
+        res.status(400).json({ message: err.message || "Could not shorten this leave." });
+    }
+});
+
+/* ---------------- UC-03 (extended): HR corrects leave already under way ----------------
+ * The other end of the same engine. When an employee tries to cancel leave that
+ * is already running, PUT /:id/cancel tells them to "ask HR to adjust it
+ * instead" — this is the endpoint that makes that sentence true.
+ *
+ * HR is the authority of last resort here, so there is no approval chain: the
+ * change applies immediately and is written to the audit trail with a reason.
+ */
+router.put("/:id/hr-adjust", validateToken, requireRole("HR_ADMIN"), async (req, res) => {
+    let validationSchema = yup.object({
+        newEndDate: yup.string().matches(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+        cancelEntirely: yup.boolean().default(false),
+        reason: yup.string().trim().min(5).max(300).required()
+    });
+    try {
+        const data = await validationSchema.validate(req.body, { abortEarly: false });
+        if (!data.cancelEntirely && !data.newEndDate) {
+            return res.status(400).json({ message: "Give a new end date, or set cancelEntirely to void the whole leave." });
+        }
+
+        const result = await sequelize.transaction(async (transaction) => {
+            const request = await LeaveRequest.findByPk(req.params.id, {
+                include: [{ model: User, as: "employee", attributes: ["id", "name", "team", "country", "role"] }],
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!request) return { status: 404 };
+            if (request.status !== "APPROVED") {
+                return { status: 400, message: "Only approved leave can be adjusted." };
+            }
+            if (request.cancellationRequested) {
+                return { status: 400, message: "This request is already awaiting a cancellation decision." };
+            }
+
+            const employee = request.employee;
+
+            if (data.cancelEntirely) {
+                const restored = await restoreDays(request, request.days, transaction);
+                request.status = "CANCELLED";
+                request.pendingEndDate = null;
+                await request.save({ transaction });
+                await audit(request.id, req.user.name,
+                    `Voided by HR: ${data.reason.slice(0, 120)} - ${restored} day(s) restored`,
+                    { transaction });
+                return { status: 200, request, employee, restored, voided: true };
+            }
+
+            // HR may act on leave that has already begun — that is the point.
+            const check = rules.shortenCheck(request, data.newEndDate, todayISO(), { allowStarted: true });
+            if (!check.ok) return { status: 400, message: check.message };
+
+            const newDays = await daysForUserRange(
+                employee, request.startDate, data.newEndDate, request.halfDay
+            );
+            const outcome = rules.shortenOutcome(request.days, newDays);
+            if (!outcome.ok) {
+                return { status: 400, message: "That change frees up no chargeable days." };
+            }
+
+            const restored = await restoreDays(request, outcome.daysReturned, transaction);
+            const previousEnd = request.endDate;
+            request.endDate = data.newEndDate;
+            request.days = newDays;
+            request.pendingEndDate = null;
+            await request.save({ transaction });
+            await audit(request.id, req.user.name,
+                `Adjusted by HR: ends ${data.newEndDate} instead of ${previousEnd} (${data.reason.slice(0, 100)}) - ${restored} day(s) restored`,
+                { transaction });
+
+            return { status: 200, request, employee, restored, previousEnd };
+        });
+
+        if (result.status === 404) return res.sendStatus(404);
+        if (result.status !== 200) return res.status(result.status).json({ message: result.message });
+
+        try {
+            await notify(
+                result.request.employeeId,
+                (result.voided
+                    ? `HR voided your leave REQ-${result.request.id}: ${data.reason}. ${result.restored} day(s) returned to your balance.`
+                    : `HR adjusted your leave REQ-${result.request.id} to end ${result.request.endDate}: ${data.reason}. ${result.restored} day(s) returned to your balance.`
+                ).slice(0, 255),
+                { type: "APPROVAL", event: "HR_ADJUSTED", requestId: result.request.id }
+            );
+        } catch (_) {
+            console.error(`[notification] HR adjustment delivery failed for request ${result.request.id}.`);
+        }
+
+        res.json({
+            request: result.request,
+            daysRestored: result.restored,
+            message: result.voided
+                ? `REQ-${result.request.id} voided. ${result.restored} day(s) returned to ${result.employee?.name}.`
+                : `REQ-${result.request.id} now ends ${result.request.endDate}. ${result.restored} day(s) returned to ${result.employee?.name}.`
+        });
+    } catch (err) {
+        if (err.errors) return res.status(400).json({ errors: err.errors });
+        res.status(400).json({ message: err.message || "Could not adjust this leave." });
+    }
+});
+
+/* ---------------- UC-13 (extended): certificates HR still needs to chase ----------------
+ * Sick leave with no certificate attached that ought to have one — either the
+ * type always requires it, or the absence ran past what self-declaration covers.
+ * Read-only and HR-only: the document itself is never included, only the fact
+ * that it is missing (GET /leave/:id/attachment remains the one way to see one).
+ */
+router.get("/mc-compliance", validateToken, requireRole("HR_ADMIN"), async (req, res) => {
+    const types = await LeaveType.findAll();
+    const typeByCode = Object.fromEntries(types.map((t) => [t.code, t]));
+
+    const rows = await LeaveRequest.findAll({
+        where: {
+            leaveType: { [Op.in]: ["sick_mc", "sick_nomc"] },
+            // Every stage the chain can park a request at, plus approved leave.
+            status: { [Op.in]: [...chain.PENDING_STATUSES, "APPROVED"] }
+        },
+        attributes: [
+            "id", "employeeId", "leaveType", "startDate", "endDate",
+            "days", "status", "createdAt"
+        ],
+        include: [{ model: User, as: "employee", attributes: ["id", "name", "team", "country"] }],
+        order: [["startDate", "DESC"]]
+    });
+
+    // `attachmentData` is deliberately excluded from the query above (it is a
+    // multi-megabyte column), so presence is checked separately.
+    const withAttachment = new Set(
+        (await LeaveRequest.findAll({
+            where: {
+                id: { [Op.in]: rows.length ? rows.map((r) => r.id) : [-1] },
+                attachmentData: { [Op.ne]: null }
+            },
+            attributes: ["id"]
+        })).map((r) => r.id)
+    );
+
+    const outstanding = [];
+    for (const r of rows) {
+        const gap = rules.mcComplianceGap(
+            {
+                leaveType: r.leaveType,
+                days: r.days,
+                status: r.status,
+                attachmentData: withAttachment.has(r.id) ? "present" : null
+            },
+            typeByCode[r.leaveType] || null
+        );
+        if (!gap) continue;
+        outstanding.push({
+            id: r.id,
+            employee: r.employee ? { id: r.employee.id, name: r.employee.name, team: r.employee.team } : null,
+            leaveType: r.leaveType,
+            startDate: r.startDate,
+            endDate: r.endDate,
+            days: Number(r.days),
+            status: r.status,
+            reason: gap.reason,
+            detail: gap.detail
+        });
+    }
+
+    res.json({
+        selfDeclarationLimit: rules.MC_REQUIRED_AFTER_DAYS,
+        count: outstanding.length,
+        outstanding
     });
 });
 

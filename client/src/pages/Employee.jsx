@@ -736,8 +736,40 @@ export default function Employee({ user, setToast }) {
 
   // F4: cancel requires ConfirmDialog (no accidental cancel)
   const [cancelTarget, setCancelTarget] = useState(null); // request row or null
+  // UC-03 (extended): "I'm coming back early." Keeps the leave, pulls the end
+  // date back, and only the days no longer taken return to the balance.
+  const [shortenTarget, setShortenTarget] = useState(null); // request row or null
+  const [shortenEnd, setShortenEnd] = useState("");
+  const [shortenBusy, setShortenBusy] = useState(false);
+  const [shortenError, setShortenError] = useState("");
   const [cancelLoading, setCancelLoading] = useState(false);
   const [detailRequest, setDetailRequest] = useState(null);
+
+
+  const openShorten = (r) => {
+    setShortenTarget(r);
+    setShortenError("");
+    // Default to one day earlier than the current end — the commonest case.
+    const d = new Date(`${r.endDate}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    const suggested = d.toISOString().slice(0, 10);
+    setShortenEnd(suggested >= r.startDate ? suggested : r.startDate);
+  };
+
+  const submitShorten = () => {
+    if (!shortenTarget || shortenBusy) return;
+    setShortenBusy(true);
+    setShortenError("");
+    http
+      .put(`/leave/${shortenTarget.id}/shorten`, { newEndDate: shortenEnd })
+      .then((res) => {
+        setToast(res.data.message);
+        setShortenTarget(null);
+        loadAll();
+      })
+      .catch((err) => setShortenError(apiError(err, "Could not request an early return.")))
+      .finally(() => setShortenBusy(false));
+  };
 
   const handleCancelConfirm = () => {
     if (!cancelTarget || cancelLoading) return;
@@ -1508,6 +1540,19 @@ export default function Employee({ user, setToast }) {
                       >
                         Request cancellation
                       </button>
+                      {/* UC-03: coming back early keeps the leave and returns
+                          only the unused days. Multi-day, future leave only —
+                          once it has started it is HR's correction to make. */}
+                      {r.endDate !== r.startDate && !r.halfDay && (
+                        <button
+                          type="button"
+                          onClick={() => openShorten(r)}
+                          title="Keep this leave but come back sooner"
+                          className="text-xs text-brand-700 hover:text-brand-800 underline"
+                        >
+                          Return early
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => downloadIcs(r)}
@@ -1900,6 +1945,60 @@ export default function Employee({ user, setToast }) {
       )}
 
       {/* F4: confirm cancel leave */}
+      {/* UC-03 (extended): pick the new last day of leave. */}
+      <Modal
+        open={!!shortenTarget}
+        onClose={() => !shortenBusy && setShortenTarget(null)}
+        title={shortenTarget ? `Return early from REQ-${shortenTarget.id}` : "Return early"}
+      >
+        {shortenTarget && (
+          <div className="space-y-3">
+            <p className="text-sm text-lf-text-muted">
+              {typeLabel(shortenTarget.leaveType)} · {fmt(shortenTarget.startDate)} →{" "}
+              {fmt(shortenTarget.endDate)} ({Number(shortenTarget.days)} day(s) deducted).
+            </p>
+            <label className="block text-sm">
+              <span className="text-lf-text-muted">New last day of leave</span>
+              <input
+                type="date"
+                className="lf-input mt-1"
+                value={shortenEnd}
+                min={shortenTarget.startDate}
+                max={shortenTarget.endDate}
+                onChange={(e) => setShortenEnd(e.target.value)}
+              />
+            </label>
+            <p className="text-xs text-lf-text-subtle">
+              The leave is not cancelled — it simply ends sooner, and only the days you no
+              longer take come back to your balance. Your Supervisor and Manager approve the
+              change first. Weekends and public holidays were never charged, so trimming
+              those alone returns nothing.
+            </p>
+            {shortenError && (
+              <p className="text-sm text-rose-600">{shortenError}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={shortenBusy}
+                onClick={() => setShortenTarget(null)}
+                className="lf-btn lf-btn-outline lf-btn-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={shortenBusy || !shortenEnd}
+                onClick={submitShorten}
+                className="lf-btn lf-btn-primary lf-btn-sm"
+              >
+                {shortenBusy ? "Requesting…" : "Request early return"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <ConfirmDialog
         open={!!cancelTarget}
         onClose={() => !cancelLoading && setCancelTarget(null)}

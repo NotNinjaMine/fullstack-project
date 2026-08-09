@@ -1,7 +1,7 @@
 // M2 (Employee Leave Experience) pure-function unit tests — no DB, run under jest
 // like the M3/M4/M5 tests: `npm test` in server/.
-const rules = require('../services/leaveRules');
-const { buildIcs, addOneDay, escapeText } = require('../services/icsService');
+const rules = require('../../server/services/leaveRules');
+const { buildIcs, addOneDay, escapeText } = require('../../server/services/icsService');
 
 describe('leaveRules.sgtTodayISO', () => {
     test('uses Singapore time, not the server timezone', () => {
@@ -211,5 +211,171 @@ describe('icsService.buildIcs (UC-14 calendar export)', () => {
 
     test('escapeText escapes newlines', () => {
         expect(escapeText('a\nb')).toBe('a\\nb');
+    });
+});
+
+/* ============================================================================
+ * UC-03 (extended): returning early from approved leave.
+ * The same engine serves the employee's "I am coming back on Wednesday" and
+ * HR's correction of leave that is already under way, so the rules are tested
+ * once here and exercised through both routes in api.m2.integration.test.js.
+ * ========================================================================= */
+
+describe('leaveRules.shortenCheck', () => {
+    const approved = {
+        startDate: '2026-12-01',
+        endDate: '2026-12-05',
+        status: 'APPROVED',
+        halfDay: false,
+        cancellationRequested: false
+    };
+    const beforeItStarts = '2026-11-20';
+
+    test('accepts a date inside the original range', () => {
+        expect(rules.shortenCheck(approved, '2026-12-03', beforeItStarts)).toEqual({ ok: true });
+    });
+
+    test('the new end date must stay inside the original leave', () => {
+        const after = rules.shortenCheck(approved, '2026-12-09', beforeItStarts);
+        expect(after.ok).toBe(false);
+        expect(after.message).toMatch(/inside the original leave/i);
+
+        const before = rules.shortenCheck(approved, '2026-11-30', beforeItStarts);
+        expect(before.ok).toBe(false);
+    });
+
+    test('the existing end date is not a shortening', () => {
+        const res = rules.shortenCheck(approved, '2026-12-05', beforeItStarts);
+        expect(res.ok).toBe(false);
+        expect(res.message).toMatch(/nothing to shorten/i);
+    });
+
+    test('only approved leave can be shortened', () => {
+        for (const status of ['PENDING_SUPERVISOR', 'PENDING_MANAGER', 'REJECTED', 'CANCELLED', 'DRAFT']) {
+            const res = rules.shortenCheck({ ...approved, status }, '2026-12-03', beforeItStarts);
+            expect(res.ok).toBe(false);
+            expect(res.message).toMatch(/only approved leave/i);
+        }
+    });
+
+    test('a leave already awaiting a cancellation decision is refused', () => {
+        const res = rules.shortenCheck(
+            { ...approved, cancellationRequested: true }, '2026-12-03', beforeItStarts
+        );
+        expect(res.ok).toBe(false);
+        expect(res.message).toMatch(/already awaiting/i);
+    });
+
+    test('a half-day has nothing to shorten', () => {
+        const res = rules.shortenCheck(
+            { ...approved, endDate: '2026-12-01', halfDay: true }, '2026-12-01', beforeItStarts
+        );
+        expect(res.ok).toBe(false);
+        expect(res.message).toMatch(/half-day/i);
+    });
+
+    test('a malformed date is rejected rather than coerced', () => {
+        for (const bad of ['', null, '3 Dec', '2026-13-01x', '01-12-2026']) {
+            expect(rules.shortenCheck(approved, bad, beforeItStarts).ok).toBe(false);
+        }
+    });
+
+    // The boundary the two doors are built around.
+    test('the employee is turned away once the leave has started, and pointed at HR', () => {
+        const started = rules.shortenCheck(approved, '2026-12-03', '2026-12-02');
+        expect(started.ok).toBe(false);
+        expect(started.message).toMatch(/already started/i);
+        expect(started.message).toMatch(/HR/);
+    });
+
+    test('the first day counts as started — an employee cannot shorten on the day', () => {
+        expect(rules.shortenCheck(approved, '2026-12-03', '2026-12-01').ok).toBe(false);
+    });
+
+    test('HR may shorten leave that has already started', () => {
+        expect(
+            rules.shortenCheck(approved, '2026-12-03', '2026-12-02', { allowStarted: true })
+        ).toEqual({ ok: true });
+    });
+
+    test('HR is still bound by the range and status rules', () => {
+        expect(rules.shortenCheck(approved, '2026-12-09', '2026-12-02', { allowStarted: true }).ok).toBe(false);
+        expect(
+            rules.shortenCheck({ ...approved, status: 'CANCELLED' }, '2026-12-03', '2026-12-02', { allowStarted: true }).ok
+        ).toBe(false);
+    });
+});
+
+describe('leaveRules.shortenOutcome', () => {
+    test('returns only the difference in chargeable days', () => {
+        expect(rules.shortenOutcome(5, 3)).toMatchObject({ daysReturned: 2, fullyCancelled: false, ok: true });
+    });
+
+    test('trimming every working day is a full withdrawal, not a shortening', () => {
+        expect(rules.shortenOutcome(5, 0)).toMatchObject({ daysReturned: 5, fullyCancelled: true });
+    });
+
+    test('freeing no chargeable day is not ok (the trimmed days were weekends/holidays)', () => {
+        expect(rules.shortenOutcome(3, 3)).toMatchObject({ daysReturned: 0, ok: false });
+    });
+
+    test('half-day precision survives', () => {
+        expect(rules.shortenOutcome(2.5, 1).daysReturned).toBe(1.5);
+        expect(rules.shortenOutcome(1, 0.5).daysReturned).toBe(0.5);
+    });
+
+    test('never reports a usable return if the numbers are inverted', () => {
+        expect(rules.shortenOutcome(2, 4).ok).toBe(false);
+    });
+
+    test('missing numbers degrade to zero rather than NaN', () => {
+        const res = rules.shortenOutcome(undefined, null);
+        expect(res.daysReturned).toBe(0);
+        expect(Number.isNaN(res.daysReturned)).toBe(false);
+    });
+});
+
+/* ---------------- UC-13 (extended): certificate compliance ---------------- */
+
+describe('leaveRules.mcComplianceGap', () => {
+    const sick = (over) => ({
+        leaveType: 'sick_nomc', days: 4, attachmentData: null, status: 'APPROVED', ...over
+    });
+
+    test('flags a long self-declared absence with no certificate', () => {
+        const gap = rules.mcComplianceGap(sick());
+        expect(gap.reason).toBe('EXCEEDS_SELF_DECLARATION');
+        expect(gap.detail).toContain(String(rules.MC_REQUIRED_AFTER_DAYS));
+    });
+
+    test('a short absence within the self-declaration limit is fine', () => {
+        expect(rules.mcComplianceGap(sick({ days: rules.MC_REQUIRED_AFTER_DAYS }))).toBeNull();
+        expect(rules.mcComplianceGap(sick({ days: 1 }))).toBeNull();
+    });
+
+    test('a certificate on file clears it, however long the absence', () => {
+        expect(rules.mcComplianceGap(sick({ days: 30, attachmentData: 'data:application/pdf;base64,AAA' }))).toBeNull();
+    });
+
+    test('a type that always requires an MC is flagged even for one day', () => {
+        const gap = rules.mcComplianceGap(
+            sick({ leaveType: 'sick_mc', days: 1 }),
+            { code: 'sick_mc', name: 'Sick Leave (with MC)', requiresMc: true }
+        );
+        expect(gap.reason).toBe('TYPE_REQUIRES_MC');
+    });
+
+    test('annual leave is never a certificate problem', () => {
+        expect(rules.mcComplianceGap({ leaveType: 'annual', days: 10, attachmentData: null, status: 'APPROVED' })).toBeNull();
+    });
+
+    test('withdrawn, refused and unsubmitted requests are not chased', () => {
+        for (const status of ['CANCELLED', 'REJECTED', 'DRAFT']) {
+            expect(rules.mcComplianceGap(sick({ status }))).toBeNull();
+        }
+    });
+
+    test('a request still awaiting approval is chased — the MC is wanted before the decision', () => {
+        expect(rules.mcComplianceGap(sick({ status: 'PENDING_SUPERVISOR' }))).not.toBeNull();
     });
 });
