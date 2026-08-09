@@ -16,7 +16,7 @@ From `server/`:
 npx jest ../tests/jervis
 ```
 
-Or the whole project's suites together (mine plus the shared ones) — **227 tests, 17 suites**:
+Or the whole project's suites together (mine plus the shared ones) — **242 tests, 18 suites**:
 
 ```bash
 npx jest

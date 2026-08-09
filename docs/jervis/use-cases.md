@@ -17,13 +17,17 @@ flows also run on the Supervisor, Manager and HR screens, because a change to
 | **Employee** | The primary actor for all of them |
 | **Supervisor** | Tier 1 of any change to approved leave (cancellation, early return, swap); views a certificate when deciding |
 | **Manager** | Tier 2, final; the balance moves only on their approval |
-| **HR Admin** | Corrects leave that has already started; chases missing certificates; decides leadership self-applications |
+| **HR Admin** | Corrects leave that has already started; chases missing certificates. Applies for leave like any employee |
+| **Boss** | Decides a Manager's own leave; their own leave is decided by any Manager |
 | **System** | Recomputes chargeable days, expires stale swap proposals, writes the audit trail |
 
 A design rule that runs through all of them: **an approver may apply for their own
-leave, but never decide it.** A Supervisor's own request starts at the Manager
-tier; a Manager's or HR Admin's own request has no conflict-free team peer, so it
-goes to HR Admin. `canActOn()` enforces this regardless of which endpoint is called.
+leave, but never decide it.** Where a request enters the chain is decided by
+`services/approvalChain.js`, not by a hard-coded role check — a Supervisor's own
+leave starts at the Manager tier, a Manager's goes up to the **Boss**, and the
+Boss's goes back down to the Manager tier (any Manager, company-wide, since the
+Boss sits above every team). `canActOn()` enforces this regardless of which
+endpoint is called, including my cancellation and early-return routes.
 
 ---
 

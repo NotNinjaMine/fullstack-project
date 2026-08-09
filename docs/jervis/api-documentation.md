@@ -60,7 +60,7 @@ which silently shifted every date comparison by one.
 
 Creates a leave request, or saves it privately as a draft.
 
-**Roles:** EMPLOYEE, SUPERVISOR, MANAGER, HR_ADMIN
+**Roles:** EMPLOYEE, SUPERVISOR, MANAGER, HR_ADMIN, BOSS
 *(Approvers may apply for their own leave; it routes to a tier that has no conflict
 of interest — see the routing note below.)*
 
@@ -125,10 +125,18 @@ acknowledge the exception explicitly.
 | `Insufficient balance: requesting 5 day(s) but only 3 remain…` | Balance, including pending requests |
 | `Leave cannot be applied for … these fall inside a blocked period…` | M4 blackout, BLOCK mode |
 
-**Routing note.** An EMPLOYEE's request starts at `PENDING_SUPERVISOR`. A
-SUPERVISOR's own leave starts at `PENDING_MANAGER` (their own tier cannot decide
-it). A MANAGER's or HR_ADMIN's own leave has no conflict-free team peer, so it is
-routed to HR Admin instead.
+**Routing note.** The entry stage comes from `services/approvalChain.js`, never
+from a hard-coded role check:
+
+| Applicant | Enters at | Finally decided by |
+|---|---|---|
+| EMPLOYEE, HR_ADMIN | `PENDING_SUPERVISOR` | own-team Manager |
+| SUPERVISOR | `PENDING_MANAGER` | own-team Manager |
+| MANAGER | `PENDING_BOSS` | the Boss |
+| BOSS | `PENDING_MANAGER` | any Manager, company-wide |
+
+The same table governs my cancellation and early-return routes, so a Manager
+returning early is reviewed by the Boss rather than by a peer.
 
 ---
 
@@ -136,7 +144,7 @@ routed to HR Admin instead.
 
 Answers "what would this cost me?" before committing. **Nothing is persisted.**
 
-**Roles:** EMPLOYEE, SUPERVISOR, MANAGER, HR_ADMIN
+**Roles:** EMPLOYEE, SUPERVISOR, MANAGER, HR_ADMIN, BOSS
 
 **Request**
 
@@ -201,7 +209,7 @@ no such row.
 
 ### `PUT /leave/:id/cancel`
 
-**Roles:** EMPLOYEE, SUPERVISOR, MANAGER, HR_ADMIN — **owner only.**
+**Roles:** EMPLOYEE, SUPERVISOR, MANAGER, HR_ADMIN, BOSS — **owner only.**
 
 Behaviour depends on where the request is:
 
@@ -239,7 +247,7 @@ cancellation racing an approval cannot both land.
 "I'm coming back early." The leave is **not** cancelled — its end date is pulled
 back and only the days no longer taken are returned.
 
-**Roles:** EMPLOYEE, SUPERVISOR, MANAGER, HR_ADMIN — **owner only.**
+**Roles:** EMPLOYEE, SUPERVISOR, MANAGER, HR_ADMIN, BOSS — **owner only.**
 
 **Request:** `{ "newEndDate": "2026-11-18" }`
 
@@ -254,7 +262,7 @@ back and only the days no longer taken are returned.
 }
 ```
 
-Like a cancellation, it routes Supervisor → Manager. On final approval the end
+Like a cancellation, it re-enters the chain at the stage `approvalChain` dictates for the applicant's role. On final approval the end
 date moves, `days` is recomputed against the employee's own country calendar, and
 **only the difference** comes off `used`. On refusal the original dates stand.
 

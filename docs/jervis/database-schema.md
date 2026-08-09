@@ -32,7 +32,7 @@ erDiagram
         string name
         string email UK
         string password "bcrypt hash"
-        enum role "EMPLOYEE|SUPERVISOR|MANAGER|HR_ADMIN"
+        enum role "EMPLOYEE|SUPERVISOR|MANAGER|HR_ADMIN|BOSS"
         string country "FK-by-code to leave_policies"
         enum gender "ANY-restricted leave types"
         string team
@@ -130,7 +130,7 @@ One row per leave request, including drafts. Columns marked **M2** are ones I ad
 | `halfDay` | BOOL | no | `0` | Single-day requests only |
 | `halfDayPeriod` | ENUM(`AM`,`PM`) | yes | — | Set only when `halfDay` |
 | `reason` | VARCHAR(200) | no | — | 3–200 chars |
-| `status` | ENUM | no | `PENDING_SUPERVISOR` | `DRAFT`, `PENDING_SUPERVISOR`, `PENDING_MANAGER`, `APPROVED`, `REJECTED`, `CANCELLED` |
+| `status` | ENUM | no | `PENDING_SUPERVISOR` | `DRAFT`, `PENDING_SUPERVISOR`, `PENDING_MANAGER`, **`PENDING_BOSS`**, `APPROVED`, `REJECTED`, `CANCELLED` |
 | `flagged` | BOOL | no | `0` | Coverage below threshold or a special-approval blackout — needs explicit Manager sign-off |
 | `isDraft` | BOOL | no | `0` | **M2** — private, not routed |
 | `cancellationRequested` | BOOL | no | `0` | **M2** — this pending cycle changes *approved* leave |
@@ -281,7 +281,7 @@ state, it is the audit trail read back.
 |---|---|
 | `country` | Selects the weekend configuration, the holiday calendar and the leave policy |
 | `team` | Coverage checks, team calendar, swap eligibility, approver routing |
-| `role` | Which approval tier a self-application starts at |
+| `role` | Which approval tier a self-application starts at — resolved through `approvalChain.initialStatusFor()`. Five roles: EMPLOYEE, SUPERVISOR, MANAGER, HR_ADMIN, **BOSS** |
 | `gender` | Gender-restricted leave types |
 
 > **Integration note.** `gender` was being dropped when the auth middleware rebuilt

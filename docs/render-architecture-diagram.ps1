@@ -116,11 +116,11 @@ $g.DrawString("API  —  Node.js + Express  ·  port 3001", $fTier, $brInk, 82, 
 # middleware
 $mwy = $t2y + 46
 Panel 82 $mwy 1556 52 ([System.Drawing.Color]::FromArgb(24, 71, 85, 105)) $cData 8
-CenterText "MIDDLEWARE   validateToken  ->  requireRole        (req.user is rebuilt from the LIVE database row, never trusted from the token body)" $fBox (New-Object System.Drawing.SolidBrush($cData)) 82 ($mwy + 15) 1556
+CenterText "MIDDLEWARE   validateToken  ->  requireRole      (req.user rebuilt from the LIVE row)      approvalChain: EMPLOYEE/HR -> Supervisor -> Manager  |  MANAGER -> Boss  |  BOSS -> any Manager" $fBox (New-Object System.Drawing.SolidBrush($cData)) 82 ($mwy + 15) 1556
 
 # routes
 $ry = $mwy + 72
-$g.DrawString("ROUTE MODULES  —  12 modules, 127 endpoints", $fSmall, $brMuted, 88, ($ry - 20))
+$g.DrawString("ROUTE MODULES  —  12 modules, 130 endpoints", $fSmall, $brMuted, 88, ($ry - 20))
 $rw = 246; $rx = 82
 Comp $rx            $ry $rw 74 "/user  /invitation"   "auth, sessions, onboarding"    $m1
 Comp ($rx+$rw+16)   $ry $rw 74 "/leave  /swap"        "apply, drafts, cancel, swaps"  $m2
@@ -131,7 +131,7 @@ Comp ($rx+5*($rw+16)) $ry $rw 74 "/ai"                "AI-1 .. AI-5, advisory on
 
 # services
 $sy = $ry + 104
-$g.DrawString("SERVICES  —  32 modules holding the business logic (pure functions wherever possible, so they unit-test without a database)", $fSmall, $brMuted, 88, ($sy - 20))
+$g.DrawString("SERVICES  —  33 modules holding the business logic (pure functions wherever possible, so they unit-test without a database)", $fSmall, $brMuted, 88, ($sy - 20))
 Comp $rx            $sy $rw 86 "leaveRules"       "overlap, backdating, quotas, shorten"  $m2
 Comp ($rx+$rw+16)   $sy $rw 86 "calculationService" "chargeable days — SINGLE SOURCE"    $m4
 Comp ($rx+2*($rw+16)) $sy $rw 86 "notificationService" "post-commit, best effort"        $m3

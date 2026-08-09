@@ -5,6 +5,11 @@
 **Last verified:** 9 August 2026 — route inventory, model list, dependency list and
 background jobs in this document were read from the running code, not from the plan.
 
+> **Includes the `approvalChain` refactor.** The approval hierarchy is now derived
+> from one module (`server/services/approvalChain.js`) and adds a **BOSS** role and
+> a **`PENDING_BOSS`** stage, so a Manager's own leave is decided by the Boss and
+> the Boss's own leave by any Manager. Five roles, not four.
+
 ![Architecture diagram](architecture-diagram.png)
 
 > **About the diagram.** `architecture-diagram.png` is produced by
@@ -39,7 +44,7 @@ flowchart TB
     subgraph api["Node.js / Express API — port 3001"]
         direction TB
         MW["Middleware<br/>validateToken → requireRole"]
-        subgraph routes["12 route modules · 127 endpoints"]
+        subgraph routes["12 route modules · 130 endpoints"]
             R1["/user /invitation<br/>/announcement"]
             R2["/leave /swap"]
             R3["/notification /delegation"]
@@ -47,7 +52,7 @@ flowchart TB
             R5["/admin /report"]
             R6["/ai"]
         end
-        subgraph svc["32 services — the business logic"]
+        subgraph svc["33 services — the business logic"]
             S1["leaveRules · icsService"]
             S2["calculationService<br/>weekendConfigService<br/>staffingService"]
             S3["notificationService<br/>delegationService<br/>businessTime"]
@@ -187,11 +192,22 @@ That is why there is one decision endpoint rather than three, and why a change t
 the approval rules cannot accidentally apply to applications but not to
 cancellations.
 
-**No auto-approval anywhere.** A Supervisor endorsement never finalises; only a
-Manager (or HR Admin, for leadership requests) can approve. An approver can never
-decide their own request — a Supervisor's own leave starts at the Manager tier, and
-a Manager's or HR Admin's own leave routes to HR Admin, because no team peer could
-decide it without a conflict of interest.
+**No auto-approval anywhere.** A Supervisor endorsement never finalises; only the
+role that owns the final stage can approve. An approver can never decide their own
+request. `services/approvalChain.js` is the single source of truth for who decides
+what:
+
+| Applicant | Stage 1 | Stage 2 | Decided by |
+|---|---|---|---|
+| EMPLOYEE / HR_ADMIN | `PENDING_SUPERVISOR` | `PENDING_MANAGER` | own-team Supervisor, then own-team Manager |
+| SUPERVISOR | `PENDING_MANAGER` | — | own-team Manager only |
+| MANAGER | `PENDING_BOSS` | — | the Boss only |
+| BOSS | `PENDING_MANAGER` | — | any Manager, company-wide |
+
+The two executive rows exist because a Manager has no conflict-free peer at their
+own tier, so their leave goes up to the Boss; the Boss has nobody above them, so
+theirs goes back down to the Manager tier — and since the Boss sits above every
+team, **any** active Manager may decide it.
 
 ---
 
@@ -350,7 +366,7 @@ version conflicts when five branches merged.
 
 ## 11. Testing strategy
 
-**227 tests across 17 suites, all passing.**
+**242 tests across 18 suites, all passing.**
 
 ```bash
 cd server && npx jest
@@ -407,8 +423,8 @@ leave-app/
 │   ├── src/lib/            http (axios + JWT), dates, i18n, decisionFeedback
 │   └── scripts/            checkSyntax · checkUndefined
 ├── server/                 Express API
-│   ├── routes/             12 modules, 127 endpoints
-│   ├── services/           32 services — the business logic
+│   ├── routes/             12 modules, 130 endpoints
+│   ├── services/           33 services — the business logic
 │   ├── models/             22 Sequelize models
 │   ├── middlewares/        validateToken · requireRole
 │   ├── scripts/            seed · migrations · verification helpers
