@@ -1,0 +1,346 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────
+   Design tokens — Innovare corporate identity
+   Primary accent is the Innovare magenta-purple (#7b2a63) used on
+   innovare-group.com for the header bar, CTAs and headings.
+   Gold (#e9a13b) is the site's secondary accent (stat-card bars,
+   active nav link) — used sparingly for emphasis, never for CTAs.
+   Neutrals lean slate for a calm base; semantic colors keep their
+   status meaning (green = approved, rose = rejected, amber = pending).
+   ───────────────────────────────────────────────────────────── */
+:root {
+  /* Typography — Outfit, the innovare-group.com corporate typeface */
+  --lf-font-sans: "Outfit", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Surfaces */
+  --lf-surface: #ffffff;
+  --lf-surface-muted: #f8fafc; /* slate-50 */
+  --lf-surface-page: #f1f5f9; /* slate-100 */
+  --lf-border: #e2e8f0; /* slate-200 */
+  --lf-border-strong: #cbd5e1; /* slate-300 */
+  --lf-overlay: rgba(15, 23, 42, 0.42);
+
+  /* Text (slate scale) */
+  --lf-text: #0f172a; /* slate-900 */
+  --lf-text-muted: #64748b; /* slate-500 */
+  --lf-text-subtle: #94a3b8; /* slate-400 */
+
+  /* Accent — Innovare purple, primary actions only */
+  --lf-accent: #7b2a63; /* brand-700 */
+  --lf-accent-hover: #8e3374; /* brand-600 slightly lifted on hover */
+  --lf-accent-active: #5f2150; /* brand-800 */
+  --lf-accent-soft: #fbf4f8; /* brand-50 */
+  --lf-accent-ring: rgba(123, 42, 99, 0.32);
+
+  /* Gold — Innovare secondary accent (emphasis bars, highlights) */
+  --lf-gold: #e9a13b; /* gold-500 */
+  --lf-gold-soft: #fef8ee; /* gold-50 */
+
+  /* Card accent bar — copied from innovare-group.com, where every card carries a
+     left rule that fades purple → orange down its height. Their implementation is
+     `border-image: linear-gradient(rgb(140,49,122), rgb(250,170,38)) 1`, but
+     border-image squares off rounded corners, so we paint the identical gradient
+     as a clipped background layer instead. Same colours, same direction, and the
+     card's border-radius survives. */
+  --lf-bar-from: #8c317a;
+  --lf-bar-to: #faaa26;
+  --lf-bar: linear-gradient(to bottom, var(--lf-bar-from) 0%, var(--lf-bar-to) 100%);
+  --lf-bar-width: 6px;
+
+  /* Optional soft indigo (secondary chips only — not primary CTA) */
+  --lf-indigo-soft: #eef2ff;
+  --lf-indigo-text: #4338ca;
+
+  /* Semantic status */
+  --lf-success: #059669;
+  --lf-success-soft: #ecfdf5;
+  --lf-danger: #e11d48;
+  --lf-danger-hover: #be123c;
+  --lf-danger-soft: #fff1f2;
+  --lf-danger-ring: rgba(225, 29, 72, 0.3);
+  --lf-warning: #d97706;
+  --lf-warning-soft: #fffbeb;
+
+  /* Elevation */
+  --lf-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --lf-shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --lf-shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.05);
+  --lf-shadow-card-hover: 0 12px 24px -8px rgba(15, 23, 42, 0.12), 0 4px 8px -4px rgba(15, 23, 42, 0.06);
+  --lf-shadow-modal: 0 25px 50px -12px rgba(15, 23, 42, 0.2);
+}
+
+/* Modal entrance */
+@keyframes lf-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes lf-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer components {
+  /* Every card surface carries the Innovare accent bar on its left edge. The
+     gradient is the first background layer (6px wide, full height, clipped by the
+     card's radius); the surface colour is the layer beneath it. */
+  .lf-card,
+  .lf-card-static,
+  .lf-card-request {
+    background:
+      var(--lf-bar) left top / var(--lf-bar-width) 100% no-repeat,
+      var(--lf-surface);
+  }
+
+  /* ── Cards: subtle lift on hover ─────────────────────────── */
+  .lf-card {
+    border-radius: 0.75rem; /* rounded-xl */
+    border: 1px solid transparent;
+    box-shadow: var(--lf-shadow-sm);
+    transition:
+      transform 250ms ease,
+      box-shadow 250ms ease,
+      border-color 250ms ease;
+  }
+
+  .lf-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--lf-shadow-card-hover);
+    border-color: var(--lf-border);
+  }
+
+  /* Static cards (forms, panels that shouldn't jump) */
+  .lf-card-static {
+    border-radius: 0.75rem;
+    border: 1px solid var(--lf-border);
+    box-shadow: var(--lf-shadow-sm);
+  }
+
+  /* Queue request cards — overflow-hidden friendly */
+  .lf-card-request {
+    border-radius: 0.75rem;
+    border: 1px solid transparent;
+    box-shadow: var(--lf-shadow-sm);
+    overflow: hidden;
+    transition:
+      transform 250ms ease,
+      box-shadow 250ms ease,
+      border-color 250ms ease;
+  }
+
+  .lf-card-request:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--lf-shadow-card-hover);
+    border-color: var(--lf-border);
+  }
+
+  /* ── Buttons: shared base states ─────────────────────────── */
+  .lf-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    border-radius: 0.5rem; /* rounded-lg — matches dashboard */
+    padding: 0.5rem 1.25rem;
+    border: 1px solid transparent;
+    transition:
+      background-color 200ms ease,
+      border-color 200ms ease,
+      color 200ms ease,
+      box-shadow 200ms ease,
+      transform 150ms ease,
+      opacity 150ms ease;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .lf-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--lf-accent-ring);
+  }
+
+  .lf-btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .lf-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    box-shadow: none;
+    transform: none;
+  }
+
+  /* Primary — Innovare purple only */
+  .lf-btn-primary {
+    background: var(--lf-accent);
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(123, 42, 99, 0.22);
+  }
+
+  .lf-btn-primary:hover:not(:disabled) {
+    background: var(--lf-accent-hover);
+    box-shadow: 0 2px 6px rgba(123, 42, 99, 0.3);
+  }
+
+  .lf-btn-primary:active:not(:disabled) {
+    background: var(--lf-accent-active);
+  }
+
+  .lf-btn-primary:disabled {
+    background: #cbd5e1;
+    color: #fff;
+    opacity: 1;
+  }
+
+  /* Danger — reject / cancel */
+  .lf-btn-danger {
+    background: var(--lf-surface);
+    color: var(--lf-danger);
+    border-color: #fecdd3; /* rose-200 */
+  }
+
+  .lf-btn-danger:hover:not(:disabled) {
+    background: var(--lf-danger-soft);
+    border-color: #fda4af;
+  }
+
+  .lf-btn-danger:focus-visible {
+    box-shadow: 0 0 0 3px var(--lf-danger-ring);
+  }
+
+  .lf-btn-danger-solid {
+    background: var(--lf-danger);
+    color: #fff;
+  }
+
+  .lf-btn-danger-solid:hover:not(:disabled) {
+    background: var(--lf-danger-hover);
+  }
+
+  .lf-btn-danger-solid:focus-visible {
+    box-shadow: 0 0 0 3px var(--lf-danger-ring);
+  }
+
+  .lf-btn-danger-solid:disabled {
+    background: #cbd5e1;
+    color: #fff;
+    opacity: 1;
+  }
+
+  /* Outline / secondary */
+  .lf-btn-outline {
+    background: var(--lf-surface);
+    color: var(--lf-accent);
+    border-color: var(--lf-accent);
+  }
+
+  .lf-btn-outline:hover:not(:disabled) {
+    background: var(--lf-accent-soft);
+  }
+
+  /* Ghost / muted */
+  .lf-btn-ghost {
+    background: transparent;
+    color: var(--lf-text-muted);
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .lf-btn-ghost:hover:not(:disabled) {
+    background: var(--lf-surface-muted);
+    color: var(--lf-text);
+  }
+
+  /* Compact size for toolbars */
+  .lf-btn-sm {
+    padding: 0.375rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  /* Inputs — consistent focus */
+  .lf-input {
+    width: 100%;
+    margin-top: 0.25rem;
+    border: 1px solid var(--lf-border-strong);
+    border-radius: 0.5rem;
+    padding: 0.625rem;
+    font-size: 0.875rem;
+    background: var(--lf-surface);
+    color: var(--lf-text);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .lf-input:focus {
+    outline: none;
+    border-color: var(--lf-accent);
+    box-shadow: 0 0 0 3px var(--lf-accent-ring);
+  }
+
+  .lf-input:disabled {
+    background: var(--lf-surface-muted);
+    color: var(--lf-text-muted);
+  }
+
+  /* Modal chrome shared with cards */
+  .lf-modal-panel {
+    animation: lf-modal-in 160ms ease-out both;
+    box-shadow: var(--lf-shadow-modal);
+  }
+
+  .lf-modal-overlay {
+    animation: lf-overlay-in 140ms ease-out both;
+  }
+
+  /* Soft indigo chip (optional secondary badge) */
+  .lf-chip-indigo {
+    background: var(--lf-indigo-soft);
+    color: var(--lf-indigo-text);
+  }
+}
+
+@layer base {
+  /* Innovare corporate typeface — applies to the whole app, including elements
+     Tailwind's preflight does not reach (form controls inherit it too). */
+  html {
+    font-family: var(--lf-font-sans);
+  }
+
+  body,
+  input,
+  select,
+  textarea,
+  button {
+    font-family: inherit;
+  }
+
+  /* Outfit's default figures are proportional; tabular figures keep balance
+     numbers and dates from shifting as they update. */
+  .lf-tnum,
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .lf-page {
+    background: var(--lf-surface-page);
+    color: var(--lf-text);
+  }
+}

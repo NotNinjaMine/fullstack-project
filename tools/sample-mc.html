@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sample MC generator — LMS testing tool</title>
+<style>
+  body { font-family: Outfit, system-ui, Arial, sans-serif; margin: 24px; color: #0f172a; }
+  h1 { font-size: 20px; margin: 0 0 4px; color: #7b2a63; }
+  p.sub { color: #64748b; margin: 0 0 18px; font-size: 14px; }
+  label { display: inline-block; font-size: 13px; color: #475569; margin: 0 14px 12px 0; }
+  input { display: block; margin-top: 4px; padding: 7px 9px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; }
+  button { background: #7b2a63; color: #fff; border: 0; border-radius: 8px; padding: 9px 18px; font: inherit; cursor: pointer; }
+  button:hover { background: #8e3374; }
+  canvas { border: 1px solid #e2e8f0; border-radius: 6px; margin-top: 16px; max-width: 100%; }
+  .note { background: #fef8ee; border: 1px solid #f8dfb6; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <h1>Sample medical certificate generator</h1>
+  <p class="sub">
+    Testing aid for UC-13's AI certificate check. Fill in the dates, click Download,
+    then attach the PNG to a sick-leave request in the app and press
+    &ldquo;Check MC with AI&rdquo;. Not a real certificate &mdash; no patient data.
+  </p>
+
+  <label>Clinic name<input id="clinic" value="Bright Health Clinic" size="26" /></label>
+  <label>Leave from<input id="from" type="date" /></label>
+  <label>Leave to<input id="to" type="date" /></label>
+  <br />
+  <button id="dl">Download PNG</button>
+
+  <div class="note">
+    <strong>To see a MATCH:</strong> use the same dates as your leave request.<br />
+    <strong>To see a MISMATCH:</strong> use dates a week away from your request &mdash;
+    the app should tell you the certificate does not cover the days you applied for.
+  </div>
+
+  <canvas id="c" width="760" height="460"></canvas>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const pad = (n) => String(n).padStart(2, "0");
+  const today = new Date();
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  $("from").value = iso(today);
+  $("to").value = iso(today);
+
+  const pretty = (v) => {
+    if (!v) return "—";
+    const [y, m, d] = v.split("-").map(Number);
+    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    return `${pad(d)} ${months[m - 1]} ${y}`;
+  };
+
+  function draw() {
+    const c = $("c"), x = c.getContext("2d");
+    x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+    x.strokeStyle = "#333"; x.lineWidth = 2; x.strokeRect(20, 20, 720, 420);
+    x.fillStyle = "#111";
+    x.font = "bold 30px Arial"; x.fillText($("clinic").value.toUpperCase(), 60, 80);
+    x.font = "16px Arial"; x.fillText("12 Orchard Road, Singapore 238888  ·  Tel 6555 1234", 60, 108);
+    x.font = "bold 26px Arial"; x.fillText("MEDICAL CERTIFICATE", 60, 170);
+    x.font = "19px Arial";
+    x.fillText("This is to certify that the patient named below", 60, 215);
+    x.fillText("is unfit for duty for the period:", 60, 245);
+    x.font = "bold 24px Arial";
+    x.fillText("FROM: " + pretty($("from").value), 60, 300);
+    x.fillText("TO:   " + pretty($("to").value), 60, 336);
+    x.font = "17px Arial";
+    x.fillText("Dr. Amelia Chen, MBBS   ·   Reg. No. M12345A", 60, 392);
+    x.fillText("Issued: " + pretty($("from").value), 60, 418);
+  }
+
+  ["clinic", "from", "to"].forEach((id) => $(id).addEventListener("input", draw));
+  $("dl").addEventListener("click", () => {
+    draw();
+    const a = document.createElement("a");
+    a.download = `sample-mc-${$("from").value}.png`;
+    a.href = $("c").toDataURL("image/png");
+    a.click();
+  });
+  draw();
+</script>
+</body>
+</html>

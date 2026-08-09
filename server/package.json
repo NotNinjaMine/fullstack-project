@@ -1,0 +1,39 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "Leave Management System API - Innovare (SCCCI AI Challenge 2B)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "seed": "node seed.js",
+    "seed:test": "node scripts/seedTestDb.js",
+    "test": "jest --runInBand",
+    "test:unit": "jest tests/delegationService.test.js tests/notificationService.test.js tests/notificationPreferences.test.js tests/notificationRecipients.test.js tests/mailer.test.js tests/transactionBoundary.test.js tests/approvalRules.test.js tests/aiClient.test.js tests/businessTime.test.js tests/newFeatures.test.js tests/demoEmailMigration.test.js tests/submissionIdempotency.test.js",
+    "test:m3": "jest tests/api.m3.integration.test.js",
+    "check": "node scripts/checkSyntax.js",
+    "migrate:demo-emails": "node scripts/migrateDemoEmails.js",
+    "verify:demo-emails": "node scripts/verifyDemoEmails.js"
+  },
+  "keywords": [],
+  "author": "Group 4",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.9.3",
+    "nodemailer": "^9.0.3",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4",
+    "sequelize": "^6.37.8",
+    "yup": "^1.4.0"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "nodemon": "^3.1.0",
+    "supertest": "^7.2.2"
+  }
+}

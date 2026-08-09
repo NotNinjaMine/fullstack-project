@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mysql.server status *)",
+      "Bash(brew services *)"
+    ]
+  }
+}
