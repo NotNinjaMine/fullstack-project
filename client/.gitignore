@@ -8,3 +8,5 @@ coverage/
 logs/
 *.log
 .vite/
+.vercel
+.env*

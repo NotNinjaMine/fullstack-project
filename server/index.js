@@ -21,10 +21,18 @@ if (process.env.VERCEL) {
     // On Vercel there is no long-lived startup phase to run sync() in (each
     // invocation just imports this module), so gate the first request per
     // cold start on it instead. Cached per warm instance; retried if it fails.
+    //
+    // Deliberately NOT { alter: true }: Vercel spins up fresh instances often,
+    // so alter would re-run its schema diff on every cold start against a
+    // schema that's already correct. Against TiDB that repeated diffing drifted
+    // Sequelize's auto-generated constraint names (fk_10, fk_11, fk_12, ...),
+    // producing duplicate foreign keys and eventually a "constraint does not
+    // exist" crash. Plain sync() only creates missing tables; schema changes
+    // need an explicit one-off migration instead.
     let dbReady = null;
     app.use((req, res, next) => {
         if (!dbReady) {
-            dbReady = db.sequelize.sync({ alter: true }).catch((err) => {
+            dbReady = db.sequelize.sync().catch((err) => {
                 dbReady = null;
                 throw err;
             });
