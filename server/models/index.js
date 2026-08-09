@@ -9,15 +9,22 @@ const db = {};
 require('dotenv').config();
 
 // Create sequelize instance using config
+const sequelizeOptions = {
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    dialect: 'mysql',
+    logging: false,
+    timezone: '+08:00'
+};
+if (process.env.VERCEL) {
+  // Each serverless invocation can land on a fresh instance with its own pool,
+  // so a small max here keeps concurrent invocations from exhausting the
+  // database's connection limit.
+  sequelizeOptions.pool = { max: 2, min: 0, idle: 5000, acquire: 30000 };
+}
 let sequelize = new Sequelize(
   process.env.DB_NAME, process.env.DB_USER, process.env.DB_PWD,
-  {
-      host: process.env.DB_HOST,
-      port: process.env.DB_PORT,
-      dialect: 'mysql',
-      logging: false,
-      timezone: '+08:00'
-  }
+  sequelizeOptions
 );
 
 fs

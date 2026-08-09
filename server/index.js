@@ -15,6 +15,24 @@ app.use(cors({
     origin: process.env.CLIENT_URL
 }));
 
+const db = require('./models');
+
+if (process.env.VERCEL) {
+    // On Vercel there is no long-lived startup phase to run sync() in (each
+    // invocation just imports this module), so gate the first request per
+    // cold start on it instead. Cached per warm instance; retried if it fails.
+    let dbReady = null;
+    app.use((req, res, next) => {
+        if (!dbReady) {
+            dbReady = db.sequelize.sync({ alter: true }).catch((err) => {
+                dbReady = null;
+                throw err;
+            });
+        }
+        dbReady.then(() => next()).catch(next);
+    });
+}
+
 // API landing route. Keep this as plain text so opening the backend URL can
 // never be mistaken for the React client application.
 app.get("/", (req, res) => {
@@ -80,8 +98,6 @@ app.use((err, req, res, next) => {
     }
     return next();
 });
-
-const db = require('./models');
 
 // Export app for supertest integration tests (listen only when run directly)
 module.exports = app;
