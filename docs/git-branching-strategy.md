@@ -17,6 +17,13 @@ Recommended branch names:
 - `fix/<short-problem-name>`
 - `docs/<short-document-name>`
 
+### Branch used for this submission
+
+Jervis's individual contribution is published on the GitHub branch
+`feature/jervis-employee-leave`. It contains the employee leave experience,
+the supporting documentation, tests, AI evidence, and the fixes merged into
+the submission build.
+
 ## Commit rules
 
 Commits should describe the result, not the activity. Examples:
