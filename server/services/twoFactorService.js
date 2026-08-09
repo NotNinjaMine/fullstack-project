@@ -28,9 +28,13 @@ const RESEND_COOLDOWN_SECONDS = 30;
 //
 //  - A demo account (seeded @wypledu.online staff, or a placeholder demo phone
 //    number) has nobody reading its inbox, holding its handset or running an
-//    authenticator app. Its code is always shown on screen, for EMAIL, SMS and
-//    AUTHENTICATOR alike — including when SMTP is configured and the mail
-//    genuinely went out to the demo mailbox nobody opens.
+//    authenticator app — EXCEPT for email when SMTP is actually configured
+//    (production/Vercel has a real group redirect set up): those codes are
+//    genuinely deliverable, so they're never also shown on screen. When SMTP
+//    isn't configured (e.g. the test suite, or a fresh local checkout with no
+//    server/.env SMTP block filled in), EMAIL falls back to the same
+//    on-screen behavior as SMS and AUTHENTICATOR, which have no real delivery
+//    path either way.
 //  - A real/live account NEVER sees its code on screen, for any method. Even if
 //    delivery fails, we report the delivery error instead; showing the code
 //    would defeat the second factor entirely.
@@ -41,6 +45,7 @@ const { isDemoEmail } = require('./demoEmailDomain');
 const isDemoAccount = (user, method) => {
     if (process.env.NODE_ENV === "production") return false;
     if (!user) return false;
+    if (normalizeMethod(method) === "EMAIL" && mailer.smtpConfigured()) return false;
     if (isDemoEmail(user.email)) return true;
     // A demo placeholder handset is a demo destination even if the account's
     // email is real — only relevant when SMS is the chosen method.
