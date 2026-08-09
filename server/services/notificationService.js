@@ -297,10 +297,10 @@ const buildReminderKey = (request, recipientIds) => {
 
 const parseReminderKey = (key) => {
     const value = String(key || '');
-    let match = value.match(/^(PENDING_(?:SUPERVISOR|MANAGER))\|([^|]+)\|([0-9,]*)\|24h$/);
+    let match = value.match(/^(PENDING_(?:SUPERVISOR|MANAGER|BOSS))\|([^|]+)\|([0-9,]*)\|24h$/);
     if (!match) {
         // Compatibility with the earlier colon-delimited implementation.
-        match = value.match(/^(PENDING_(?:SUPERVISOR|MANAGER)):(.+Z):([0-9,]*):24h$/);
+        match = value.match(/^(PENDING_(?:SUPERVISOR|MANAGER|BOSS)):(.+Z):([0-9,]*):24h$/);
     }
     if (!match) return null;
     const stageStart = new Date(match[2]);
