@@ -4,9 +4,12 @@
 // are advisory only — HR decides what to do. No LLM required (fully offline);
 // this keeps the demo deterministic and matches the app's offline-first pattern.
 const { Op } = require('sequelize');
-const { User, LeaveRequest, LeaveBalance } = require('../models');
+const { User, LeaveRequest, LeaveBalance, LeavePolicy } = require('../models');
 const { currentLeaveYear } = require('./leaveYearService');
 const chain = require('./approvalChain');
+const {
+    remainingDays, daysAtRisk, capForPolicy, isAnomalyWorthy, DEFAULT_CARRY_FORWARD_MAX
+} = require('./leaveEligibility');
 
 // `year` is optional — defaults to the active leave year (same one the Staff
 // Table/dashboard use), not necessarily the real calendar year. See
@@ -17,15 +20,28 @@ const detectAnomalies = async (year) => {
     const nameOf = (id) => users.find((u) => u.id === id)?.name || `User ${id}`;
     const flags = [];
 
-    // 1. Forfeiture risk — annual remaining above the 5-day carry cap.
+    // 1. Forfeiture risk — annual remaining above the employee's country carry
+    // cap. The cap used to be hard-coded 5 here, which disagreed with both the
+    // reminder email and the carry-forward report on any other country.
+    const policies = await LeavePolicy.findAll();
+    const capByCountry = Object.fromEntries(policies.map((p) => [p.country, capForPolicy(p)]));
+    const capFor = (userId) => {
+        const country = users.find((u) => u.id === userId)?.country;
+        return capByCountry[country] ?? DEFAULT_CARRY_FORWARD_MAX;
+    };
+
     const balances = await LeaveBalance.findAll({ where: { leaveType: "annual", year: activeYear } });
     for (const b of balances) {
-        const rem = Number(b.entitled) + Number(b.carried) - Number(b.used);
-        if (rem - 5 >= 3) {
+        const cap = capFor(b.userId);
+        const rem = remainingDays(b);
+        const atRisk = daysAtRisk(b, cap);
+        // Flags at 3 days, deliberately above the email's 1-day threshold, so
+        // HR's panel is not filled with single-day noise.
+        if (isAnomalyWorthy(atRisk)) {
             flags.push({
                 severity: "warning",
                 category: "Forfeiture risk",
-                message: `${nameOf(b.userId)} has ${rem} annual day(s) left — about ${rem - 5} may be forfeited at year-end (5-day cap).`,
+                message: `${nameOf(b.userId)} has ${rem} annual day(s) left — about ${atRisk} may be forfeited at year-end (${cap}-day cap).`,
                 userId: b.userId
             });
         }

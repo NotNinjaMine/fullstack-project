@@ -16,11 +16,15 @@ From `server/`:
 npx jest ../tests/jervis
 ```
 
-Or the whole project's suites together (mine plus the shared ones) — **242 tests, 18 suites**:
+Or the whole project's suites together (mine plus every other member's) —
+**413 tests, 30 suites**:
 
 ```bash
 npx jest
 ```
+
+> On Windows PowerShell, `&&` is not a valid separator. Run `cd server` as its
+> own line first, then the `npx jest` command.
 
 `server/jest.config.js` declares two roots, so `tests/<member>/` and
 `server/tests/` both run under one command. Each member's own suites are
@@ -28,13 +32,24 @@ identifiable by folder while still being part of one green build.
 
 ### Prerequisites
 
-The 83 pure-function tests need nothing but `npm install`. The 18 integration
-tests talk to a real database:
+83 of the 101 tests are pure functions and touch no database. Even so, **every
+run needs `server/.env.test` to exist** — `jest.config.js` loads
+`tests/setupEnv.js` before every suite, and it refuses to start without that
+file rather than risk pointing at the demo database. Only the 18 integration
+tests actually connect.
+
+From `server/`:
 
 ```bash
-cp .env.example .env.test     # then set DB_NAME to a dedicated test schema
-npm run seed:test             # seeds leave_test
+cp .env.test.example .env.test   # then fill DB_PWD; APP_SECRET can stay blank
+npm run seed:test                # creates and seeds leave_test
 npx jest ../tests/jervis
+```
+
+The `leave_test` schema must already exist in MySQL:
+
+```sql
+CREATE DATABASE `leave_test`;
 ```
 
 `tests/setupEnv.js` **refuses to run** unless `DB_NAME` contains "test", so the

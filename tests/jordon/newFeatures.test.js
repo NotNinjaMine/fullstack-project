@@ -1,6 +1,6 @@
 'use strict';
 
-jest.mock('../../backend/models', () => ({
+jest.mock('../../server/models', () => ({
   User: {},
   LeaveBalance: {},
   LeavePolicy: {},
@@ -8,8 +8,8 @@ jest.mock('../../backend/models', () => ({
   CountryWorkingDays: {}
 }));
 
-const { workingDaysInRange, computeDays } = require('../../backend/services/calculationService');
-const { prorateEntitlement } = require('../../backend/services/entitlementService');
+const { workingDaysInRange, computeDays } = require('../../server/services/calculationService');
+const { prorateEntitlement } = require('../../server/services/entitlementService');
 
 describe('new feature helpers', () => {
   test('workingDaysInRange excludes weekends and holidays', () => {

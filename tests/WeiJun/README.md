@@ -15,18 +15,18 @@
 
 ## How to run
 
-From `backend/`:
+From `server/`:
 
 ```bash
-npx jest ../tests/weijun          # just these three files
+npx jest ../tests/WeiJun          # just these three files
 npx jest                          # everything, alongside the other members' suites
 ```
 
 The first two files need no database — they test pure functions. The third mocks
-`../src/models` the same way `backend/tests/notificationPreferences.test.js` does,
-so no test database is touched either. All three still run under the project's
-normal `npx jest` from `backend/`, because `jest.config.js`'s two `roots` cover
-both `backend/tests/` and `tests/<member>/`.
+`../../server/models` the same way `server/tests/notificationPreferences.test.js`
+does, so no test database is touched either. All three still run under the
+project's normal `npx jest` from `server/`, because `server/jest.config.js`'s two
+`roots` cover both `server/tests/` and `tests/<member>/`.
 
 ## Notable cases
 

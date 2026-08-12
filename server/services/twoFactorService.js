@@ -432,7 +432,7 @@ const resendChallenge = async (challengeToken) => {
 
 module.exports = {
     CODE_LENGTH, TTL_MINUTES, MAX_ATTEMPTS, MAX_RESENDS, RESEND_COOLDOWN_SECONDS,
-    generateCode, sha256, maskEmail, normalizeMethod, destinationFor, isDemoAccount,
+    generateCode, sha256, maskEmail, maskPhone, normalizeMethod, destinationFor, isDemoAccount,
     availableMethods, createPendingChallenge, sendCodeForChallenge,
     createChallenge, verifyChallenge, resendChallenge, findLiveChallenge
 };

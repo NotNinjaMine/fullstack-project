@@ -3,32 +3,43 @@
 ```bash
 cd server
 npm install
-npx jest              # all suites
-npx jest --verbose    # every test name
-npx jest tests/totpService.test.js   # one suite
+npx jest ../tests/jordon              # just these five suites
+npx jest ../tests/jordon --verbose    # every test name
+npx jest ../tests/jordon/totpService.test.js   # one suite
+npx jest                              # every suite in the project
 ```
 
-**Current status: 88 tests across 5 suites, all passing.**
+> On Windows PowerShell, `&&` is not a valid separator — run `cd server` on its
+> own line.
+
+**Current status: 22 tests across 5 suites, all passing** (59 assertions —
+related checks are grouped into one `test()` each, so the figure Jest prints is
+lower than the number of things being asserted).
 
 ```
-PASS tests/twoFactorService.test.js
-PASS tests/totpService.test.js
-PASS tests/entitlementAndAccess.test.js
-PASS tests/newFeatures.test.js
-PASS tests/notificationService.test.js
+PASS ../tests/jordon/twoFactorService.test.js
+PASS ../tests/jordon/totpService.test.js
+PASS ../tests/jordon/entitlementAndAccess.test.js
+PASS ../tests/jordon/newFeatures.test.js
+PASS ../tests/jordon/notificationService.test.js
 
 Test Suites: 5 passed, 5 total
-Tests:       88 passed, 88 total
+Tests:       22 passed, 22 total
 ```
 
 ---
 
 ## Testing approach
 
-Every test here runs against **pure functions with no database**, so `npx jest` works on a
-clean checkout with nothing but `npm install` — no MySQL, no seed data, no environment
-setup. That is deliberate: tests that need infrastructure get skipped, and skipped tests
+Every test here runs against **pure functions with no database** — no MySQL, no seed
+data. That is deliberate: tests that need infrastructure get skipped, and skipped tests
 catch nothing.
+
+One setup step is still required, because `jest.config.js` loads
+`server/tests/setupEnv.js` before *every* suite in the project and it refuses to start
+without a `server/.env.test` file — the guard that stops any suite being pointed at the
+demo database. Copy `server/.env.test.example` to `server/.env.test` once; these five
+suites never open the connection it describes.
 
 The trade-off is that database-backed behaviour (opening a challenge row, consuming it,
 cascading a permanent delete) is not covered here. Those paths were verified separately

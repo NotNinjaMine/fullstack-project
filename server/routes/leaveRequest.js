@@ -25,6 +25,7 @@ const { buildIcs, icsFilename } = require('../services/icsService');
 // moment HR runs a year-end carry-forward (UC-04) - not necessarily the calendar
 // year. Everything that reads a balance resolves it through this one service.
 const { currentLeaveYear } = require('../services/leaveYearService');
+const { checkLeaveTypeEligibility, eligibleTypesFor } = require('../services/leaveEligibility');
 
 /* ---------------- helpers ---------------- */
 
@@ -104,17 +105,7 @@ const teamApprovedLeaves = async (team) => {
 // leave (FEMALE-only) or NS/reservist leave (MALE-only) in Singapore.
 const resolveApplicableLeaveType = async (code, user) => {
     const type = await LeaveType.findOne({ where: { code: String(code || "").trim().toLowerCase() } });
-    if (!type || !type.active) {
-        return { ok: false, message: "This leave type is not available." };
-    }
-    const countries = Array.isArray(type.applicableCountries) ? type.applicableCountries : [];
-    if (countries.length > 0 && !countries.includes(user.country)) {
-        return { ok: false, message: `${type.name} is not available in your country.` };
-    }
-    if (type.genderRestriction !== "ANY" && user.gender !== type.genderRestriction) {
-        return { ok: false, message: `${type.name} is not available for your profile.` };
-    }
-    return { ok: true, type };
+    return checkLeaveTypeEligibility(type, user);
 };
 
 // M1: who is told about a newly submitted request depends on WHO submitted it.
@@ -704,12 +695,9 @@ const decideOne = async (
 // HR_ADMIN) since it's read-only and scoped to the caller's own profile.
 router.get("/types", validateToken, async (req, res) => {
     const all = await LeaveType.findAll({ where: { active: true }, order: [['code', 'ASC']] });
-    const eligible = all.filter((t) => {
-        const countries = Array.isArray(t.applicableCountries) ? t.applicableCountries : [];
-        if (countries.length > 0 && !countries.includes(req.user.country)) return false;
-        if (t.genderRestriction !== "ANY" && req.user.gender !== t.genderRestriction) return false;
-        return true;
-    });
+    // Same helper the apply path enforces with, so this list can never offer a
+    // type the server would then reject.
+    const eligible = eligibleTypesFor(all, req.user);
     res.json(eligible.map((t) => ({
         code: t.code,
         name: t.name,

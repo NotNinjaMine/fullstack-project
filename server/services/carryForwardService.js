@@ -9,8 +9,13 @@
 // Balance math is decided in code.
 const { User, LeaveBalance, LeavePolicy, ConfigAuditLog } = require('../models');
 const { notify } = require('./notificationService');
+const {
+    remainingDays, daysAtRisk, forfeitureTier, capForPolicy: capFor
+} = require('./leaveEligibility');
 
-const remaining = (b) => Number(b.entitled) + Number(b.carried) - Number(b.used);
+// Kept as a named export: routes and the reminder sweep below both use it, and
+// it is the same figure reportService and anomalyDetector report on.
+const remaining = remainingDays;
 
 // Work out what carry-forward WOULD do, without writing anything.
 //
@@ -33,7 +38,7 @@ const previewCarryForward = async (fromYear) => {
         if (!annual) continue;
 
         const unused = Math.max(0, remaining(annual));
-        const cap = Number(policy.carryForwardMax) || 5;
+        const cap = capFor(policy);
         const carried = Math.min(unused, cap);
         const forfeited = Math.max(0, unused - cap);
 
@@ -90,7 +95,7 @@ const runCarryForward = async (fromYear, actorName = "System") => {
         if (!annual) continue;
 
         const unused = Math.max(0, remaining(annual));
-        const cap = Number(policy.carryForwardMax) || 5;
+        const cap = capFor(policy);
         const carried = Math.min(unused, cap);
         const forfeited = Math.max(0, unused - cap);
 
@@ -151,14 +156,8 @@ const runCarryForward = async (fromYear, actorName = "System") => {
 // employee currently at risk of losing annual leave at year-end — before
 // runCarryForward actually happens and the days are gone. Tiered by how bad
 // the risk is: >=5d at risk = critical, >=3d = warning, >=1d = a lighter
-// heads-up. Does not touch any balance; purely informational.
-const FORFEITURE_TIERS = [
-    { min: 5, tier: "critical" },
-    { min: 3, tier: "warning" },
-    { min: 1, tier: "notice" }
-];
-const tierFor = (atRisk) => FORFEITURE_TIERS.find((t) => atRisk >= t.min)?.tier || null;
-
+// heads-up (the tier boundaries live in leaveEligibility). Does not touch any
+// balance; purely informational.
 const sendForfeitureReminders = async (actorName = "System", year = new Date().getFullYear()) => {
     const policies = await LeavePolicy.findAll();
     const policyByCountry = Object.fromEntries(policies.map((p) => [p.country, p]));
@@ -174,9 +173,9 @@ const sendForfeitureReminders = async (actorName = "System", year = new Date().g
         summary.checked++;
 
         const rem = remaining(annual);
-        const cap = Number(policy.carryForwardMax) || 5;
-        const atRisk = Math.max(0, rem - cap);
-        const tier = tierFor(atRisk);
+        const cap = capFor(policy);
+        const atRisk = daysAtRisk(annual, cap);
+        const tier = forfeitureTier(atRisk);
         if (!tier) continue;
 
         summary.atRisk++;

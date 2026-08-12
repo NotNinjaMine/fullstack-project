@@ -1013,8 +1013,8 @@ error only when its line actually runs. A scope-aware checker
 (`client/npm run check:undefined`) was written during this phase and is now part
 of the verification routine.
 
-**Final state:** 227 server tests across 17 suites, all passing; client builds
-clean; 127 endpoints mounted; verified end-to-end in a browser.
+**Final state:** 413 tests across 30 suites, all passing; client builds
+clean; 130 endpoints mounted; verified end-to-end in a browser.
 
 ### 8.1 Original phase plan (for traceability)
 

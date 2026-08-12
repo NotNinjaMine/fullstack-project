@@ -1,17 +1,17 @@
 'use strict';
 
-jest.mock('../../backend/models', () => ({
+jest.mock('../../server/models', () => ({
   Notification: { create: jest.fn(async () => ({ id: 1 })) },
   User: { findByPk: jest.fn(async () => ({ email: 'person@example.com' })), findAll: jest.fn(async () => []) },
   LeaveRequest: { findAll: jest.fn(async () => []) },
   AuditLog: { create: jest.fn(async () => ({ id: 1 })) }
 }));
 
-jest.mock('../../backend/services/mailer', () => ({
+jest.mock('../../server/services/mailer', () => ({
   sendNotificationEmail: jest.fn(async () => ({ sent: true }))
 }));
 
-const { isReminderDue } = require('../../backend/services/notificationService');
+const { isReminderDue } = require('../../server/services/notificationService');
 
 describe('notificationService helpers', () => {
   test('isReminderDue returns true for pending requests older than 24 hours', () => {

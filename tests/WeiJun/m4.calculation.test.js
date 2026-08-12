@@ -11,7 +11,7 @@ const {
     workingDaysInRange,
     computeDays,
     hasAtLeastOneWorkingDay
-} = require('../../backend/src/services/calculationService');
+} = require('../../server/services/calculationService');
 
 // A country whose weekend is Fri/Sat instead of Sat/Sun (e.g. several Middle
 // Eastern markets) — the whole reason this reads a config instead of assuming.
