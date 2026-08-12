@@ -3,9 +3,10 @@
 // in the prototype is delivered as a print-friendly HTML the browser saves as PDF,
 // so no PDF library is added. Report scope respects the caller's role visibility.
 const { Op } = require('sequelize');
-const { User, LeaveRequest, LeaveBalance } = require('../models');
+const { User, LeaveRequest, LeaveBalance, LeavePolicy } = require('../models');
 const { currentLeaveYear } = require('./leaveYearService');
 const chain = require('./approvalChain');
+const { remainingDays, daysAtRisk, capForPolicy, DEFAULT_CARRY_FORWARD_MAX } = require('./leaveEligibility');
 
 const COUNTRY_NAME = {
     SG: "Singapore", TH: "Thailand", CN: "China", ID: "Indonesia", JP: "Japan",
@@ -84,16 +85,33 @@ const carryForwardSummary = async (ids, year = new Date().getFullYear()) => {
     });
     const users = await User.findAll({ where: { id: { [Op.in]: ids.length ? ids : [-1] } } });
     const nameOf = (id) => users.find((u) => u.id === id)?.name || `User ${id}`;
+
+    // The cap is per country. This used to be a hard-coded 5 here, so on any
+    // country configured differently this report and the forfeiture reminder
+    // email quoted different numbers for the same employee.
+    const policies = await LeavePolicy.findAll();
+    const capByCountry = Object.fromEntries(policies.map((p) => [p.country, capForPolicy(p)]));
+    const capFor = (userId) => {
+        const country = users.find((u) => u.id === userId)?.country;
+        return capByCountry[country] ?? DEFAULT_CARRY_FORWARD_MAX;
+    };
+
     const table = balances
-        .map((b) => {
-            const rem = Number(b.entitled) + Number(b.carried) - Number(b.used);
-            const willForfeit = Math.max(0, rem - 5);
-            return { userId: b.userId, name: nameOf(b.userId), remaining: rem, willForfeit };
-        })
+        .map((b) => ({
+            userId: b.userId,
+            name: nameOf(b.userId),
+            remaining: remainingDays(b),
+            willForfeit: daysAtRisk(b, capFor(b.userId))
+        }))
         .filter((r) => r.remaining > 0)
         .sort((a, b) => b.willForfeit - a.willForfeit);
+
+    // Only name a single cap in the title when every employee in scope shares
+    // one; a mixed-country report would otherwise mislabel half its own rows.
+    const caps = new Set(balances.map((b) => capFor(b.userId)));
+    const capLabel = caps.size === 1 ? `${[...caps][0]}-day cap` : "per-country cap";
     return {
-        title: `Carry-forward summary (${year}, 5-day cap)`,
+        title: `Carry-forward summary (${year}, ${capLabel})`,
         chart: { type: "bar", x: table.map((t) => t.name), y: table.map((t) => t.willForfeit) },
         table
     };

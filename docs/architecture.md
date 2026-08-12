@@ -366,10 +366,11 @@ version conflicts when five branches merged.
 
 ## 11. Testing strategy
 
-**242 tests across 18 suites, all passing.**
+**413 tests across 30 suites, all passing.**
 
 ```bash
-cd server && npx jest
+cd server
+npx jest
 ```
 
 | Layer | Approach |

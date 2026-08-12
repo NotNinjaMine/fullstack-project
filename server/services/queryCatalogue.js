@@ -29,7 +29,11 @@ const CATALOGUE = [
     {
         key: "unused_balance_by_employee",
         description: "Employees with unused annual balance at risk of forfeiture",
-        keywords: ["unused", "forfeit", "forfeiture", "remaining", "balance", "carry", "expire", "leftover", "more than"],
+        // "risk of forfeit…" is spelled out as a phrase so it outscores the bare
+        // "at risk" in anomaly_flags — "who is at risk of forfeiture" is a
+        // balance question, not a risk-flag question.
+        keywords: ["unused", "forfeit", "forfeiture", "risk of forfeiture", "risk of forfeiting",
+            "remaining", "balance", "carry", "expire", "leftover", "more than"],
         run: async (caller) => {
             const ids = await reportService.visibleUserIds(caller);
             const rep = await reportService.carryForwardSummary(ids, await currentLeaveYear());
@@ -67,7 +71,9 @@ const CATALOGUE = [
     {
         key: "anomaly_flags",
         description: "Risk flags: forfeiture, burnout, clustering, coverage gaps",
-        keywords: ["risk", "anomaly", "flag", "burnout", "concern", "alert", "at risk", "who rarely"],
+        // Both singular and plural: matching is plain substring, so "anomaly"
+        // alone never matches the far more common "any anomalies?".
+        keywords: ["risk", "anomaly", "anomalies", "flag", "burnout", "concern", "alert", "at risk", "who rarely"],
         run: async (caller) => {
             const result = await detectAnomalies();
             const answer = result.count

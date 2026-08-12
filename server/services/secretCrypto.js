@@ -5,10 +5,16 @@
 // callers can treat it as "not set" rather than crash.
 const crypto = require('crypto');
 
-const keyBuf = () =>
-    crypto.createHash('sha256')
-        .update(String(process.env.APP_SECRET || 'dev-only-insecure-secret'))
-        .digest();
+// No fallback key. A hardcoded default here would mean every deployment that
+// forgot APP_SECRET encrypted its TOTP secrets under the same publicly-known
+// key — worse than not starting, because nothing would look wrong. index.js
+// refuses to boot without APP_SECRET; this is the backstop for any other entry
+// point (scripts, tests) that loads the module directly.
+const keyBuf = () => {
+    const secret = String(process.env.APP_SECRET || '').trim();
+    if (!secret) throw new Error('APP_SECRET is required to encrypt or decrypt stored secrets.');
+    return crypto.createHash('sha256').update(secret).digest();
+};
 
 const encrypt = (plain) => {
     const iv = crypto.randomBytes(12);

@@ -3,15 +3,15 @@
 // weekendConfigService.workingDaysFor for UC-29) are tested here the same way
 // M3's notification suite mocks ../src/models: no real database, but the
 // query shape and the branching logic are still exercised for real.
-jest.mock('../../backend/src/models', () => ({
+jest.mock('../../server/models', () => ({
     BlackoutPeriod: { findAll: jest.fn() },
     CountryWorkingDays: { findOne: jest.fn() }
 }));
 
 const { Op } = require('sequelize');
-const models = require('../../backend/src/models');
-const { blackoutForRange } = require('../../backend/src/services/staffingService');
-const { workingDaysFor } = require('../../backend/src/services/weekendConfigService');
+const models = require('../../server/models');
+const { blackoutForRange } = require('../../server/services/staffingService');
+const { workingDaysFor } = require('../../server/services/weekendConfigService');
 
 describe('staffingService.blackoutForRange (UC-18: blackout periods)', () => {
     beforeEach(() => jest.clearAllMocks());

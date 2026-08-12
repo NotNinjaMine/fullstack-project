@@ -2,7 +2,7 @@
 
 process.env.APP_SECRET = 'test-secret';
 
-jest.mock('../../backend/models', () => ({
+jest.mock('../../server/models', () => ({
   User: {
     findByPk: jest.fn(async () => ({
       id: 1,
@@ -18,18 +18,18 @@ jest.mock('../../backend/models', () => ({
   }
 }));
 
-jest.mock('../../backend/services/mailer', () => ({
+jest.mock('../../server/services/mailer', () => ({
   sendTwoFactorEmail: jest.fn(async () => ({ sent: true, error: null })),
   isDemoAddress: jest.fn(() => false),
   demoRedirectActive: jest.fn(() => false)
 }));
 
-jest.mock('../../backend/services/sms', () => ({
+jest.mock('../../server/services/sms', () => ({
   sendSms: jest.fn(async () => ({ sent: true, error: null })),
   demoSmsRedirectActive: jest.fn(() => false)
 }));
 
-jest.mock('../../backend/services/totpService', () => ({
+jest.mock('../../server/services/totpService', () => ({
   currentCode: jest.fn(() => '123456'),
   decrypt: jest.fn(() => 'secret'),
   verify: jest.fn((token) => token === '123456')
@@ -46,7 +46,7 @@ const {
   maskEmail,
   maskPhone,
   availableMethods
-} = require('../../backend/services/twoFactorService');
+} = require('../../server/services/twoFactorService');
 
 describe('twoFactorService pure helpers', () => {
   test('generateCode always returns a 6-digit string', () => {

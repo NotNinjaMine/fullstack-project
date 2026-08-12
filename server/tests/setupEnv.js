@@ -29,6 +29,12 @@ if (!dbName || dbName.toLowerCase() === 'leave' || !/test/i.test(dbName)) {
 }
 
 process.env.NODE_ENV = 'test';
+// The suite needs *a* signing key, not a real one — index.js and secretCrypto
+// both refuse to run without APP_SECRET. Defaulting it here keeps a fresh
+// checkout's `.env.test` from having to carry a secret that means nothing.
+if (!String(process.env.APP_SECRET || '').trim()) {
+    process.env.APP_SECRET = 'test-only-app-secret';
+}
 // Tests use mocked/deterministic AI paths and must never spend provider credits.
 process.env.OPENAI_API_KEY = '';
 process.env.OPENROUTER_API_KEY = '';

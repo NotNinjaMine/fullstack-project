@@ -9,7 +9,7 @@ cleanly when no AI provider is configured.
 |---|---|
 | **Live URL** | https://innovare-leave-client.vercel.app (API: https://innovare-leave.vercel.app) |
 | **Stack** | React 18 + Vite · Node.js + Express · MySQL 8 (Sequelize) |
-| **Tests** | 242 across 18 suites, all passing |
+| **Tests** | 413 across 30 suites, all passing |
 | **API** | 130 endpoints across 12 route modules |
 | **Docs** | [`docs/architecture.md`](docs/architecture.md) · [`HLD`](HLD_LeaveManagementSystem_3.md) · [`Use cases`](Leave_Management_System_UseCases_and_TaskAllocation_4.md) |
 
@@ -76,6 +76,13 @@ Then edit `server/.env`. The minimum you must set:
 | `APP_SECRET` | any long random string | Signs JWTs — **the server refuses to start without it** |
 | `APP_PORT` | `3001` | API port |
 | `CLIENT_URL` | `http://localhost:3000` | Used in invitation and reset links |
+
+Generate `APP_SECRET` rather than inventing one — paste the output after
+`APP_SECRET=` in `server/.env`, with no quotes:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
 
 Everything else is optional: SMTP, Twilio and the AI provider keys can all stay
 blank.
@@ -182,12 +189,16 @@ anything whose name lacks "test", so it can never touch your demo data.
 
 ```bash
 cd server
-cp .env.example .env.test      # then set DB_NAME=leave_test
+cp .env.test.example .env.test   # then fill DB_PWD and APP_SECRET
 npm run seed:test
 npx jest
 ```
 
-Expected: **242 passed, 18 suites**.
+Expected: **413 passed, 30 suites**.
+
+Run it from `server/`. `server/jest.config.js` is the only Jest config that
+matters — its two roots cover both `server/tests/` and each member's suites in
+`tests/<name>/`.
 
 | Command | Runs |
 |---|---|
@@ -358,7 +369,8 @@ logs in `ai/<member>/`.
 
 | Symptom | Cause and fix |
 |---|---|
-| `Startup failed: APP_SECRET is not set` | Set `APP_SECRET` in `server/.env` — there is no insecure default |
+| `APP_SECRET is not set` on startup | Generate one (see [step 2](#2-configure-the-server)) and put it in `server/.env` — there is no insecure default |
+| `secretOrPrivateKey must have a value` when signing in | Same cause: `APP_SECRET` is empty. Set it, then restart the API — `.env` is only read at boot |
 | `Port 3001 is already in use` | An old API is still running: `npx kill-port 3001` |
 | `Port 3000 is already in use` | Same for the client. It will not silently move ports |
 | Website loads but everything errors | Terminal 1 (the API) is not running |

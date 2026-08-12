@@ -1,5 +1,5 @@
 // M4 (Coverage, Calendar & Scheduling Rules) pure-function unit tests — no DB,
-// run under jest like the M2/M3/M5 tests: `npm test` in backend/.
+// run under jest like the M2/M3/M5 tests: `npx jest` in server/.
 //
 // services/coverage.js is the AI-2 "Smart Coverage Analyzer" engine (UC-07).
 // It is deliberately pure: date maths + array filtering over data the routes
@@ -11,7 +11,7 @@ const {
     evaluateCoverage,
     suggestAlternative,
     MIN_PRESENT
-} = require('../../backend/src/services/coverage');
+} = require('../../server/services/coverage');
 
 describe('coverage.isWorkingDay', () => {
     test('Saturday and Sunday are never working days, holiday or not', () => {

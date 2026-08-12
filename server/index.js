@@ -2,6 +2,19 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+// Fail fast, before anything else loads. APP_SECRET signs every JWT and derives
+// the key that encrypts TOTP secrets at rest, so there is deliberately no
+// default. Without this check the server starts fine and the first person to
+// sign in gets "secretOrPrivateKey must have a value" from jsonwebtoken at the
+// last step of 2FA — a confusing failure a long way from its cause.
+if (!String(process.env.APP_SECRET || '').trim()) {
+    throw new Error(
+        'APP_SECRET is not set. Add it to server/.env — any long random string, e.g. ' +
+        "node -e \"console.log(require('crypto').randomBytes(48).toString('base64url'))\". " +
+        'Changing it later invalidates existing sign-ins and stored TOTP enrolments.'
+    );
+}
+
 const app = express();
 app.disable('x-powered-by');
 // M2 (UC-13): medical certificates are posted as base64 data URLs inside the JSON

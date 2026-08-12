@@ -1,6 +1,6 @@
 'use strict';
 
-jest.mock('../../backend/models', () => ({
+jest.mock('../../server/models', () => ({
   User: {},
   LeaveBalance: {},
   LeavePolicy: {},
@@ -13,10 +13,12 @@ jest.mock('../../backend/models', () => ({
   CountryWorkingDays: {}
 }));
 
-const { prorateEntitlement } = require('../../backend/services/entitlementService');
-const { todaySGT } = require('../../backend/services/dateService');
-const { isDemoAddress } = require('../../backend/services/mailer');
-const { requireRole } = require('../../backend/middlewares/auth');
+const { prorateEntitlement } = require('../../server/services/entitlementService');
+const { todaySGT } = require('../../server/services/dateService');
+// Was mailer.isDemoAddress; M5's domain migration moved the single source of
+// truth for "is this a seeded demo account?" into demoEmailDomain.
+const { isDemoEmail } = require('../../server/services/demoEmailDomain');
+const { requireRole } = require('../../server/middlewares/auth');
 
 describe('entitlement and access helpers', () => {
   test('prorateEntitlement scales with the join month and stays bounded', () => {
@@ -32,10 +34,11 @@ describe('entitlement and access helpers', () => {
     expect(new Date(`${value}T00:00:00+08:00`)).toBeInstanceOf(Date);
   });
 
-  test('isDemoAddress recognises seeded demo domains but not lookalikes', () => {
-    expect(isDemoAddress('person@innovare.com')).toBe(true);
-    expect(isDemoAddress('person@notinnovare.com')).toBe(false);
-    expect(isDemoAddress('person@innovare.com.attacker.net')).toBe(false);
+  test('isDemoEmail recognises seeded demo domains but not lookalikes', () => {
+    expect(isDemoEmail('person@innovare.com')).toBe(true);
+    expect(isDemoEmail('person@wypledu.online')).toBe(true);
+    expect(isDemoEmail('person@notinnovare.com')).toBe(false);
+    expect(isDemoEmail('person@innovare.com.attacker.net')).toBe(false);
   });
 
   test('requireRole allows the listed role and rejects unauthorised access', () => {

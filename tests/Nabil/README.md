@@ -1,6 +1,6 @@
 # Tests — Member 5 (Nabil)
 
-**82 tests across 3 suites, all passing.** No database, no network, no API key — they run on a clean checkout with nothing but `npm install`.
+**82 tests across 3 suites, all passing.** No database, no network, no API key. The only setup they need is `npm install` plus a `server/.env.test` file (copy `server/.env.test.example`) — `jest.config.js` loads `setupEnv.js` before every suite in the project and it refuses to start without one, even for suites that never open a connection.
 
 ```
 m5.leaveEligibility.test.js   26 tests   pure functions, no database
@@ -13,7 +13,7 @@ m5.queryCatalogue.test.js     27 tests   pure functions, no database, no LLM
 From `server/`:
 
 ```bash
-npx jest ../tests/nabil
+npx jest ../tests/Nabil
 ```
 
 Or every suite in the project together:

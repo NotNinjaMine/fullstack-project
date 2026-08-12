@@ -11,7 +11,7 @@ const {
   currentCode,
   encrypt,
   decrypt
-} = require('../../backend/services/totpService');
+} = require('../../server/services/totpService');
 
 describe('totpService', () => {
   test('generateSecret returns a base32 secret', () => {
@@ -59,7 +59,13 @@ describe('totpService', () => {
     expect(decrypt(blob)).toBe(plain);
     expect(again).not.toBe(blob);
 
-    const tampered = blob.replace('a', 'z');
+    // Flip the last hex digit rather than replacing a chosen letter. The blob is
+    // hex, so `blob.replace('a', 'z')` is a no-op for the ~0.6% of blobs that
+    // happen to contain no 'a' — decrypt then returns the plaintext and this
+    // test fails at random, roughly once every 170 runs.
+    const last = blob.slice(-1);
+    const tampered = blob.slice(0, -1) + (last === '0' ? '1' : '0');
+    expect(tampered).not.toBe(blob);
     expect(decrypt(tampered)).toBeNull();
   });
 
